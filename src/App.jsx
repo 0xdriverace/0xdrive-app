@@ -342,8 +342,8 @@ function Header() {
   const myWins = tw(ME.wins);
   return (
     <div className="hdr">
-      <div className="logo">0X<span>DRIVE</span></div>
-      <div className="logo-sub">Portland, Oregon · Racing Groups</div>
+      <div className="logo">0X<span>RACE</span></div>
+      <div className="logo-sub">Powered by 0xDrive</div>
       <div className="me-row">
         <div className="av s32 me">{ME.avatar}</div>
         <div style={{flex:1}}>
