@@ -16,7 +16,7 @@ const getTier = (wins) => TIERS.find(t => wins >= t.min && wins <= t.max) || TIE
 
 /* ─── DATA ───────────────────────────────────────────────────────── */
 const ME = {
-  id:"u1", username:"xReyes", displayName:"Colin Meyn", showRealName:true,
+  id:"u1", username:"0xmeyn", displayName:"Colin Meyn", showRealName:true,
   car:"BMW M3 Competition", year:2022, avatar:"CR", city:"Portland, OR",
   wins:{h2h:9,group:3,trial:2,drag:0}, races:{h2h:14,group:5,trial:4,drag:2},
   lat:45.5231, lng:-122.6765,
@@ -34,7 +34,7 @@ const ALL_USERS = [
   { id:"u8",  username:"LuisGT3",    displayName:"Luis F.",        showRealName:true,  car:"Porsche 911 GT3",       year:2023, avatar:"LF", city:"Tigard, OR",       wins:{h2h:4,group:2,trial:1,drag:0},  races:{h2h:8,group:4,trial:3,drag:1},  lat:45.4312, lng:-122.7714, groups:["g3"], socials:{instagram:"@luisf",twitter:"",youtube:""}, times:{half_mile:"",quarter_mile:"11.5",zero_sixty:"3.3",zero_120:"8.4"} },
   { id:"u9",  username:"PriyaPlaid", displayName:"Priya N.",       showRealName:true,  car:"Tesla Model S Plaid",   year:2023, avatar:"PN", city:"Tualatin, OR",     wins:{h2h:3,group:1,trial:2,drag:2},  races:{h2h:8,group:3,trial:4,drag:4},  lat:45.3840, lng:-122.7634, groups:["g2"], socials:{instagram:"",twitter:"@priyan",youtube:""}, times:{half_mile:"",quarter_mile:"9.8",zero_sixty:"2.1",zero_120:"6.5"} },
   { id:"u10", username:"MarcusHell", displayName:"Marcus W.",      showRealName:false, car:"Dodge Hellcat Redeye",  year:2022, avatar:"MW", city:"Milwaukie, OR",    wins:{h2h:2,group:1,trial:0,drag:4},  races:{h2h:6,group:2,trial:1,drag:8},  lat:45.4468, lng:-122.6418, groups:["g4"], socials:{instagram:"@marcusw",twitter:"",youtube:""}, times:{half_mile:"11.8",quarter_mile:"10.9",zero_sixty:"3.5",zero_120:"8.9"} },
-  { id:"u13", username:"BrandenM3",  displayName:"Branden Anders", showRealName:true,  car:"BMW M3 Competition xDrive", year:2023, avatar:"BA", city:"Portland, OR", wins:{h2h:0,group:0,trial:0,drag:0},  races:{h2h:0,group:0,trial:0,drag:0},  lat:45.5300, lng:-122.6700, groups:["g1"], socials:{instagram:"",twitter:"",youtube:""}, times:{half_mile:"",quarter_mile:"",zero_sixty:"",zero_120:""} },
+  { id:"u13", username:"0xbranden",  displayName:"Branden Anders", showRealName:true,  car:"BMW M3 Competition xDrive", year:2023, avatar:"BA", city:"Portland, OR", wins:{h2h:0,group:0,trial:0,drag:0},  races:{h2h:0,group:0,trial:0,drag:0},  lat:45.5300, lng:-122.6700, groups:["g1"], socials:{instagram:"",twitter:"",youtube:""}, times:{half_mile:"",quarter_mile:"",zero_sixty:"",zero_120:""} },
 ];
 
 const INIT_GROUPS = [
