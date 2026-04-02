@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from "react";
+import { supabase } from "./lib/supabase.js";
+import AuthPage from "./components/AuthPage.jsx";
 
 const GFONTS = `@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=SF+Pro+Display:wght@400;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');`;
@@ -311,6 +313,9 @@ function TierBadge({ wins }) {
 
 /* ─── APP ────────────────────────────────────────────────────────── */
 export default function App() {
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
   const [tab, setTab] = useState("Groups");
   const [groups, setGroups] = useState(INIT_GROUPS);
   const [friends, setFriends] = useState(["u2","u3"]);
@@ -320,6 +325,66 @@ export default function App() {
   const [chatGroupId, setChatGroupId] = useState(null);
   const [myProfile, setMyProfile] = useState({...ME});
   const [editingProfile, setEditingProfile] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) loadProfile(session.user.id);
+      else setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) loadProfile(session.user.id);
+      else { setMyProfile({...ME}); setAuthLoading(false); }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const loadProfile = async (userId) => {
+    try {
+      const { data } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .single();
+      if (data) {
+        const initials = (data.display_name || data.username)
+          .split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+        setMyProfile(prev => ({
+          ...prev,
+          id: userId,
+          username: data.username,
+          displayName: data.display_name || data.username,
+          showRealName: data.show_real_name ?? false,
+          avatar: data.avatar_initials || initials,
+          city: data.city || prev.city,
+        }));
+      }
+    } catch (err) {
+      console.error("Error loading profile:", err);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  if (authLoading) {
+    return (
+      <>
+        <style>{CSS}</style>
+        <div className="app" style={{alignItems:"center",justifyContent:"center"}}>
+          <div style={{color:"var(--muted)",fontSize:13,fontFamily:"'DM Sans',sans-serif"}}>Loading…</div>
+        </div>
+      </>
+    );
+  }
+
+  if (!session) return <AuthPage />;
 
   const isFriend = id => friends.includes(id);
   const sentFR   = id => friendReqs.includes(id);
@@ -337,7 +402,7 @@ export default function App() {
     <>
       <style>{CSS}</style>
       <div className="app">
-        <Header myProfile={myProfile} />
+        <Header myProfile={myProfile} onLogout={handleLogout} />
         <div className="content fade" key={tab+playerView+chatGroupId+editingProfile}>
           {editingProfile ? (
             <EditProfile myProfile={myProfile} setMyProfile={setMyProfile} onBack={()=>setEditingProfile(false)} />
@@ -389,14 +454,21 @@ export default function App() {
 }
 
 /* ─── HEADER ─────────────────────────────────────────────────────── */
-function Header({ myProfile }) {
+function Header({ myProfile, onLogout }) {
   return (
     <div className="hdr">
       <div className="logo-wrap">
-        <div>
+        <div style={{flex:1}}>
           <div className="logo-mark">0X<span>RACE</span></div>
           <div className="logo-sub">Powered by 0xDrive</div>
         </div>
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={onLogout}
+          style={{fontSize:11,padding:"5px 10px"}}
+        >
+          Sign Out
+        </button>
       </div>
       <div className="me-pill">
         <div className="av s32 me">{myProfile.avatar}</div>
