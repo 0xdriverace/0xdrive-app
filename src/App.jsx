@@ -60,6 +60,23 @@ const RACE_TIMES = [
   {key:"half_mile",    label:"½ Mile",unit:"sec"},
 ];
 
+const BLANK_PROFILE = {
+  id: null,
+  username: "",
+  displayName: "",
+  showRealName: false,
+  avatar: "",
+  city: "",
+  car: "",
+  year: "",
+  wins:  {h2h:0, group:0, trial:0, drag:0},
+  races: {h2h:0, group:0, trial:0, drag:0},
+  times: {half_mile:"", quarter_mile:"", zero_sixty:"", zero_120:""},
+  socials: {instagram:"", twitter:"", youtube:""},
+  lat: null,
+  lng: null,
+};
+
 const tw   = w => Object.values(w).reduce((a,b)=>a+b,0);
 const getU = id => {
   if (id==="u1") return {...ME, rank: computeRanks().find(x=>x.id==="u1")?.rank??4};
@@ -323,7 +340,7 @@ export default function App() {
   const [groupReqs, setGroupReqs] = useState([]);
   const [playerView, setPlayerView] = useState(null);
   const [chatGroupId, setChatGroupId] = useState(null);
-  const [myProfile, setMyProfile] = useState({...ME});
+  const [myProfile, setMyProfile] = useState({...BLANK_PROFILE});
   const [editingProfile, setEditingProfile] = useState(false);
 
   useEffect(() => {
@@ -336,7 +353,7 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) loadProfile(session.user.id);
-      else { setMyProfile({...ME}); setAuthLoading(false); }
+      else { setMyProfile({...BLANK_PROFILE}); setAuthLoading(false); }
     });
 
     return () => subscription.unsubscribe();
@@ -350,17 +367,25 @@ export default function App() {
         .eq("id", userId)
         .single();
       if (data) {
-        const initials = (data.display_name || data.username)
+        const initials = (data.display_name || data.username || "?")
           .split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
-        setMyProfile(prev => ({
-          ...prev,
+        setMyProfile({
+          ...BLANK_PROFILE,
           id: userId,
-          username: data.username,
-          displayName: data.display_name || data.username,
+          username: data.username || "",
+          displayName: data.display_name || data.username || "",
           showRealName: data.show_real_name ?? false,
           avatar: data.avatar_initials || initials,
-          city: data.city || prev.city,
-        }));
+          city: data.city || "",
+          car: data.car || "",
+          year: data.year || "",
+          wins:  data.wins  || BLANK_PROFILE.wins,
+          races: data.races || BLANK_PROFILE.races,
+          times: data.times || BLANK_PROFILE.times,
+          socials: data.socials || BLANK_PROFILE.socials,
+          lat: data.lat ?? null,
+          lng: data.lng ?? null,
+        });
       }
     } catch (err) {
       console.error("Error loading profile:", err);
@@ -390,9 +415,10 @@ export default function App() {
   const sentFR   = id => friendReqs.includes(id);
   const addFR    = id => { if (!sentFR(id)) setFriendReqs(r=>[...r,id]); };
 
-  const isInGroup = gid => groups.find(g=>g.id===gid)?.memberIds.includes("u1");
+  const myId = session.user.id;
+  const isInGroup = gid => groups.find(g=>g.id===gid)?.memberIds.includes(myId);
   const sentGR    = gid => groupReqs.includes(gid);
-  const joinGroup = gid => setGroups(gs=>gs.map(g=>g.id===gid&&!g.memberIds.includes("u1")?{...g,memberIds:[...g.memberIds,"u1"]}:g));
+  const joinGroup = gid => setGroups(gs=>gs.map(g=>g.id===gid&&!g.memberIds.includes(myId)?{...g,memberIds:[...g.memberIds,myId]}:g));
   const reqGroup  = gid => { if (!sentGR(gid)) setGroupReqs(r=>[...r,gid]); };
 
   const pendingCount = groups.reduce((a,g)=>a+(g.pendingRequests?.length||0),0);
@@ -422,9 +448,9 @@ export default function App() {
               openPlayer={setPlayerView} groups={groups} isInGroup={isInGroup}
               sentGR={sentGR} joinGroup={joinGroup} reqGroup={reqGroup} />
           ) : tab==="Map" ? (
-            <MapView groups={groups} openPlayer={setPlayerView} />
+            <MapView groups={groups} openPlayer={setPlayerView} myProfile={myProfile} />
           ) : tab==="Ranks" ? (
-            <RanksView openPlayer={setPlayerView} />
+            <RanksView openPlayer={setPlayerView} myProfile={myProfile} />
           ) : (
             <ProfileView myProfile={myProfile} friends={friends} groups={groups}
               openPlayer={setPlayerView} onEdit={()=>setEditingProfile(true)} />
@@ -846,11 +872,13 @@ function ChatView({ groupId, groups, setGroups, onBack, openPlayer, myProfile })
 }
 
 /* ─── MAP VIEW ───────────────────────────────────────────────────── */
-function MapView({ groups, openPlayer }) {
+function MapView({ groups, openPlayer, myProfile }) {
   const [hov, setHov] = useState(null);
   const [filter, setFilter] = useState("All");
-  const myGroups = groups.filter(g=>g.memberIds.includes("u1"));
-  const allUsersWithMe = [{...ME,id:"u1"},...ALL_USERS];
+  const myId = myProfile.id;
+  const myGroups = groups.filter(g=>g.memberIds.includes(myId));
+  const meEntry = myProfile.lat != null ? [{...myProfile}] : [];
+  const allUsersWithMe = [...meEntry, ...ALL_USERS];
   const DOT_COLORS = {u1:"#f59e0b",u2:"#ffffff",u3:"#22c55e",u4:"#3b82f6",u5:"#f59e0b",u6:"#ffffff",u7:"#22c55e",u8:"#3b82f6",u9:"#ef4444",u10:"#c084fc",u13:"#22c55e"};
 
   const visibleUsers = allUsersWithMe.filter(p=>{
@@ -891,7 +919,7 @@ function MapView({ groups, openPlayer }) {
           {visibleUsers.map(p=>{
             const pos = latLngToXY(p.lat, p.lng);
             const color = DOT_COLORS[p.id]||"#888";
-            const isMe = p.id==="u1";
+            const isMe = p.id===myId;
             return (
               <div key={p.id} className="mdot" style={{left:`${pos.x}%`,top:`${pos.y}%`}}
                 onMouseEnter={()=>setHov(p.id)} onMouseLeave={()=>setHov(null)}
@@ -908,8 +936,8 @@ function MapView({ groups, openPlayer }) {
 
       <div className="sec-lbl">{visibleUsers.length} Users Visible</div>
       {visibleUsers.map((p,i)=>{
-        const isMe=p.id==="u1";
-        const DOT_COLORS2 = {u1:"#f59e0b",u2:"#ffffff",u3:"#22c55e",u4:"#3b82f6",u5:"#f59e0b",u6:"#ffffff",u7:"#22c55e",u8:"#3b82f6",u9:"#ef4444",u10:"#c084fc",u13:"#22c55e"};
+        const isMe=p.id===myId;
+        const DOT_COLORS2 = {u2:"#ffffff",u3:"#22c55e",u4:"#3b82f6",u5:"#f59e0b",u6:"#ffffff",u7:"#22c55e",u8:"#3b82f6",u9:"#ef4444",u10:"#c084fc",u13:"#22c55e"};
         return (
           <div key={p.id} className="user-row" onClick={()=>openPlayer(p.id)}>
             <div style={{width:9,height:9,borderRadius:"50%",background:DOT_COLORS2[p.id]||"#888",flexShrink:0}}/>
@@ -926,7 +954,7 @@ function MapView({ groups, openPlayer }) {
 }
 
 /* ─── RANKS VIEW ─────────────────────────────────────────────────── */
-function RanksView({ openPlayer }) {
+function RanksView({ openPlayer, myProfile }) {
   const [period, setPeriod] = useState("All Time");
   const [fmt, setFmt] = useState("Total");
   const [showTimes, setShowTimes] = useState(false);
@@ -937,8 +965,8 @@ function RanksView({ openPlayer }) {
     return p.wins[k]??0;
   };
 
-  const allUsers = [{...ME,id:"u1"},...ALL_USERS];
-  const sorted = allUsers.map(p=>({p,w:getW(p),isMe:p.id==="u1"})).sort((a,b)=>b.w-a.w);
+  const allUsers = myProfile.id ? [{...myProfile}, ...ALL_USERS] : ALL_USERS;
+  const sorted = allUsers.map(p=>({p,w:getW(p),isMe:p.id===myProfile.id})).sort((a,b)=>b.w-a.w);
 
   return (
     <div>
@@ -1013,7 +1041,7 @@ function RanksView({ openPlayer }) {
 
 /* ─── PROFILE VIEW ───────────────────────────────────────────────── */
 function ProfileView({ myProfile, friends, groups, openPlayer, onEdit }) {
-  const myGroups = groups.filter(g=>g.memberIds.includes("u1"));
+  const myGroups = groups.filter(g=>g.memberIds.includes(myProfile.id));
   const myFriends = ALL_USERS.filter(p=>friends.includes(p.id));
   const totalW = tw(myProfile.wins);
   const totalR = Object.values(myProfile.races).reduce((a,b)=>a+b,0);
