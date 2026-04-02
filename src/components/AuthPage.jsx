@@ -116,12 +116,22 @@ export default function AuthPage() {
       });
       if (signupError) throw signupError;
 
-      // If email confirmation is required, Supabase won't auto-login
+      // If Supabase returned a session directly (email confirmation disabled),
+      // onAuthStateChange in App.jsx will handle the redirect automatically.
+      // If no session (email confirmation enabled), attempt an immediate sign-in —
+      // this succeeds when confirmation is off, and fails gracefully when it's on.
       if (!data.session) {
-        setSuccess("Check your email to confirm your account, then log in.");
-        setMode("login");
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: signupEmail.trim(),
+          password: signupPassword,
+        });
+        if (signInError) {
+          // Email confirmation is required — prompt user to check inbox
+          setSuccess("Account created! Check your email to confirm, then log in.");
+          setMode("login");
+        }
+        // On success, onAuthStateChange in App.jsx handles the redirect
       }
-      // If auto-confirmed, onAuthStateChange in App.jsx handles the redirect
     } catch (err) {
       setError(err.message || "Signup failed. Please try again.");
     } finally {
