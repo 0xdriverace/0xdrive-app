@@ -317,6 +317,83 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);min-hei
 @keyframes fu{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 .notif-dot{width:8px;height:8px;border-radius:50%;background:var(--red);display:inline-block;margin-left:3px;vertical-align:middle}
 .section-divider{height:8px;background:var(--bg)}
+
+/* ── SIDEBAR (desktop only) ───────────────────────── */
+.sidebar{display:none}
+.main-area{flex:1;min-width:0;display:flex;flex-direction:column}
+
+@media(min-width:768px){
+  html,body{overflow-x:hidden}
+  .app{max-width:100%;flex-direction:row;align-items:flex-start;min-height:100vh}
+
+  /* Sidebar */
+  .sidebar{
+    display:flex;flex-direction:column;width:240px;height:100vh;
+    position:sticky;top:0;flex-shrink:0;
+    background:var(--s1);border-right:1px solid var(--border2);
+    overflow:hidden;z-index:150;
+  }
+  .sidebar-top{
+    padding:24px 20px 16px;border-bottom:1px solid var(--border);flex-shrink:0;
+  }
+  .sidebar-logo-mark{
+    font-size:24px;font-weight:800;letter-spacing:-1px;
+    color:var(--text);line-height:1;font-family:var(--font-display);margin-bottom:2px;
+  }
+  .sidebar-logo-mark span{color:var(--orange)}
+  .sidebar-logo-sub{
+    font-family:var(--font-mono);font-size:7px;letter-spacing:2px;
+    color:var(--muted2);text-transform:uppercase;margin-bottom:16px;
+  }
+  .sidebar-profile{
+    display:flex;align-items:center;gap:10px;
+    background:var(--s2);border-radius:var(--radius-md);
+    padding:10px 12px;border:1px solid var(--border2);
+  }
+  .sidebar-profile-info{flex:1;min-width:0}
+  .sidebar-profile-name{font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* Sidebar nav */
+  .sidebar-nav{flex:1;padding:8px 0;overflow-y:auto}
+  .sidebar-ni{
+    display:flex;align-items:center;gap:12px;
+    padding:11px 20px;font-size:13px;font-weight:500;
+    color:var(--muted);cursor:pointer;border:none;background:none;
+    width:100%;text-align:left;transition:all var(--transition-fast);
+    font-family:var(--font-sans);
+  }
+  .sidebar-ni:hover{background:var(--s2);color:var(--text)}
+  .sidebar-ni.on{color:var(--text);background:var(--s2);border-right:2px solid var(--orange)}
+  .sidebar-ni-icon{font-size:18px;width:22px;text-align:center;flex-shrink:0}
+  .sidebar-notif{
+    margin-left:auto;min-width:18px;height:18px;border-radius:9px;
+    background:var(--red);color:#fff;font-size:10px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;padding:0 4px;
+  }
+  .sidebar-bottom{padding:16px 20px;border-top:1px solid var(--border);flex-shrink:0}
+
+  /* Hide mobile-only elements */
+  .hdr{display:none}
+  .nav{display:none!important}
+
+  /* Main area */
+  .main-area{max-width:720px;margin:0 auto;width:100%;padding:0 8px}
+  .content{padding:0 0 48px}
+  .pg-hdr{padding:28px 20px 16px}
+  .pg-title{font-size:28px}
+
+  /* Wider map on desktop */
+  .map-wrap{height:420px}
+
+  /* Cards side-by-side on desktop */
+  .desktop-2col{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 16px;margin-bottom:10px}
+  .desktop-2col .card{margin:0}
+}
+
+@media(min-width:1100px){
+  .sidebar{width:260px}
+  .main-area{max-width:800px}
+}
 `;
 
 /* ─── TIER BADGE ─────────────────────────────────────────────────── */
@@ -438,63 +515,110 @@ export default function App() {
   const pendingCount = groups.reduce((a,g)=>a+(g.pendingRequests?.length||0),0);
   const showNav = !playerView && !chatGroupId && !editingProfile;
 
+  const TABS = [
+    {name:"Groups", icon:"👥"},
+    {name:"Search", icon:"🔍"},
+    {name:"Map",    icon:"📍"},
+    {name:"Ranks",  icon:"🏆"},
+    {name:"Profile",icon:"👤"},
+  ];
+
+  const activeTab = !playerView && !chatGroupId && !editingProfile ? tab : null;
+
+  const goTab = (name) => {
+    setTab(name);
+    setPlayerView(null);
+    setChatGroupId(null);
+    setEditingProfile(false);
+  };
+
   return (
     <>
       <style>{CSS}</style>
       <div className="app">
-        <Header myProfile={myProfile} onLogout={handleLogout} />
-        <div className="content fade" key={tab+playerView+chatGroupId+editingProfile}>
-          {editingProfile ? (
-            <EditProfile myProfile={myProfile} setMyProfile={setMyProfile} onBack={()=>setEditingProfile(false)} />
-          ) : playerView ? (
-            <UserProfile userId={playerView} onBack={()=>setPlayerView(null)}
-              isFriend={isFriend} sentFR={sentFR} addFR={addFR}
-              groups={groups} isInGroup={isInGroup} sentGR={sentGR}
-              joinGroup={joinGroup} reqGroup={reqGroup}
-              allUsers={allUsers} myProfile={myProfile} />
-          ) : chatGroupId ? (
-            <ChatView groupId={chatGroupId} groups={groups} setGroups={setGroups}
-              onBack={()=>setChatGroupId(null)} openPlayer={setPlayerView}
-              myProfile={myProfile} allUsers={allUsers} />
-          ) : tab==="Groups" ? (
-            <GroupsView groups={groups} setGroups={setGroups} isInGroup={isInGroup}
-              sentGR={sentGR} joinGroup={joinGroup} reqGroup={reqGroup}
-              openChat={setChatGroupId} pendingCount={pendingCount}
-              allUsers={allUsers} myProfile={myProfile} />
-          ) : tab==="Search" ? (
-            <SearchView isFriend={isFriend} sentFR={sentFR} addFR={addFR}
-              openPlayer={setPlayerView} groups={groups} isInGroup={isInGroup}
-              sentGR={sentGR} joinGroup={joinGroup} reqGroup={reqGroup}
-              allUsers={allUsers} myProfile={myProfile} />
-          ) : tab==="Map" ? (
-            <MapView groups={groups} openPlayer={setPlayerView}
-              myProfile={myProfile} allUsers={allUsers} />
-          ) : tab==="Ranks" ? (
-            <RanksView openPlayer={setPlayerView} myProfile={myProfile} allUsers={allUsers} />
-          ) : (
-            <ProfileView myProfile={myProfile} friends={friends} groups={groups}
-              openPlayer={setPlayerView} onEdit={()=>setEditingProfile(true)}
-              allUsers={allUsers} />
-          )}
-        </div>
-        {showNav && (
-          <nav className="nav">
-            {[
-              {name:"Groups", icon:"👥"},
-              {name:"Search", icon:"🔍"},
-              {name:"Map",    icon:"📍"},
-              {name:"Ranks",  icon:"🏆"},
-              {name:"Profile",icon:"👤"},
-            ].map(({name,icon})=>(
-              <button key={name} className={`ni ${tab===name?"on":""}`} onClick={()=>setTab(name)}>
-                <span className="ni-icon">{icon}</span>
+
+        {/* ── Desktop sidebar ── */}
+        <aside className="sidebar">
+          <div className="sidebar-top">
+            <div className="sidebar-logo-mark">0X<span>RACE</span></div>
+            <div className="sidebar-logo-sub">Powered by 0xDrive</div>
+            <div className="sidebar-profile">
+              <div className="av s32 me">{myProfile.avatar}</div>
+              <div className="sidebar-profile-info">
+                <div className="sidebar-profile-name">@{myProfile.username}</div>
+                <TierBadge wins={tw(myProfile.wins)} />
+              </div>
+            </div>
+          </div>
+          <nav className="sidebar-nav">
+            {TABS.map(({name,icon})=>(
+              <button key={name} className={`sidebar-ni ${activeTab===name?"on":""}`} onClick={()=>goTab(name)}>
+                <span className="sidebar-ni-icon">{icon}</span>
                 <span>{name}</span>
-                {tab===name && <div className="ni-dot"/>}
-                {name==="Groups"&&pendingCount>0&&<span className="notif-dot"/>}
+                {name==="Groups"&&pendingCount>0&&<span className="sidebar-notif">{pendingCount}</span>}
               </button>
             ))}
           </nav>
-        )}
+          <div className="sidebar-bottom">
+            <button className="btn btn-secondary" style={{width:"100%",justifyContent:"center"}} onClick={handleLogout}>
+              Sign Out
+            </button>
+          </div>
+        </aside>
+
+        {/* ── Main area ── */}
+        <div className="main-area">
+          <Header myProfile={myProfile} onLogout={handleLogout} />
+          <div className="content fade" key={tab+playerView+chatGroupId+editingProfile}>
+            {editingProfile ? (
+              <EditProfile myProfile={myProfile} setMyProfile={setMyProfile} onBack={()=>setEditingProfile(false)} />
+            ) : playerView ? (
+              <UserProfile userId={playerView} onBack={()=>setPlayerView(null)}
+                isFriend={isFriend} sentFR={sentFR} addFR={addFR}
+                groups={groups} isInGroup={isInGroup} sentGR={sentGR}
+                joinGroup={joinGroup} reqGroup={reqGroup}
+                allUsers={allUsers} myProfile={myProfile} />
+            ) : chatGroupId ? (
+              <ChatView groupId={chatGroupId} groups={groups} setGroups={setGroups}
+                onBack={()=>setChatGroupId(null)} openPlayer={setPlayerView}
+                myProfile={myProfile} allUsers={allUsers} />
+            ) : tab==="Groups" ? (
+              <GroupsView groups={groups} setGroups={setGroups} isInGroup={isInGroup}
+                sentGR={sentGR} joinGroup={joinGroup} reqGroup={reqGroup}
+                openChat={setChatGroupId} pendingCount={pendingCount}
+                allUsers={allUsers} myProfile={myProfile} />
+            ) : tab==="Search" ? (
+              <SearchView isFriend={isFriend} sentFR={sentFR} addFR={addFR}
+                openPlayer={setPlayerView} groups={groups} isInGroup={isInGroup}
+                sentGR={sentGR} joinGroup={joinGroup} reqGroup={reqGroup}
+                allUsers={allUsers} myProfile={myProfile} />
+            ) : tab==="Map" ? (
+              <MapView groups={groups} openPlayer={setPlayerView}
+                myProfile={myProfile} allUsers={allUsers} />
+            ) : tab==="Ranks" ? (
+              <RanksView openPlayer={setPlayerView} myProfile={myProfile} allUsers={allUsers} />
+            ) : (
+              <ProfileView myProfile={myProfile} friends={friends} groups={groups}
+                openPlayer={setPlayerView} onEdit={()=>setEditingProfile(true)}
+                allUsers={allUsers} />
+            )}
+          </div>
+
+          {/* Mobile bottom nav */}
+          {showNav && (
+            <nav className="nav">
+              {TABS.map(({name,icon})=>(
+                <button key={name} className={`ni ${tab===name?"on":""}`} onClick={()=>setTab(name)}>
+                  <span className="ni-icon">{icon}</span>
+                  <span>{name}</span>
+                  {tab===name && <div className="ni-dot"/>}
+                  {name==="Groups"&&pendingCount>0&&<span className="notif-dot"/>}
+                </button>
+              ))}
+            </nav>
+          )}
+        </div>
+
       </div>
     </>
   );
