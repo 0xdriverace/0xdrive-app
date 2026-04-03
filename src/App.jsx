@@ -6,7 +6,8 @@ import AuthPage from "./components/AuthPage.jsx";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
-const GFONTS = `@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');`;
+const GFONTS = `@import url('https://fonts.cdnfonts.com/css/pricedown');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');`;
 
 /* ─── RANK TIERS ─────────────────────────────────────────────────── */
 const TIERS = [
@@ -103,7 +104,7 @@ ${GFONTS}
   --blue:#3b82f6;
   --accent:#e4e4e7;
   --font-sans:"DM Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-  --font-display:"Plus Jakarta Sans",var(--font-sans);
+  --font-display:"Pricedown Bl","Pricedown",var(--font-sans);
   --font-mono:"JetBrains Mono","SF Mono",monospace;
   --radius-sm:6px;
   --radius-md:10px;
@@ -156,7 +157,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);min-hei
 
 /* PAGE HEADER */
 .pg-hdr{padding:20px 20px 12px}
-.pg-title{font-size:24px;font-weight:700;color:var(--text);line-height:1;margin-bottom:2px}
+.pg-title{font-size:24px;font-weight:700;color:var(--text);line-height:1;margin-bottom:2px;font-family:var(--font-display);letter-spacing:.5px}
 .pg-sub{font-size:11px;color:var(--muted);font-weight:400}
 .sec-lbl{font-size:11px;font-weight:600;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;padding:0 20px;margin-bottom:8px;margin-top:4px}
 
