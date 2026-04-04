@@ -319,6 +319,17 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);min-hei
 .notif-dot{width:8px;height:8px;border-radius:50%;background:var(--red);display:inline-block;margin-left:3px;vertical-align:middle}
 .section-divider{height:8px;background:var(--bg)}
 
+/* MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:400;display:flex;align-items:flex-end;justify-content:center}
+.modal-sheet{background:var(--s1);border-radius:var(--radius-xl) var(--radius-xl) 0 0;border:1px solid var(--border2);border-bottom:none;padding:20px 20px 40px;width:100%;max-width:100%;max-height:88vh;overflow-y:auto}
+@media(min-width:480px){.modal-sheet{max-width:430px}}
+.modal-handle{width:36px;height:4px;background:var(--border3);border-radius:2px;margin:0 auto 20px}
+.modal-title{font-size:22px;font-weight:700;color:var(--text);margin-bottom:4px;font-family:var(--font-display);letter-spacing:.5px}
+.modal-sub{font-size:12px;color:var(--muted);margin-bottom:20px}
+.seg{display:flex;background:var(--s2);border-radius:var(--radius-md);border:1px solid var(--border);overflow:hidden;margin-bottom:10px}
+.seg-opt{flex:1;padding:9px;text-align:center;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;transition:all .15s;border:none;background:none;font-family:var(--font-sans)}
+.seg-opt.on{background:var(--s3);color:var(--text)}
+
 /* ── SIDEBAR (desktop only) ───────────────────────── */
 .sidebar{display:none}
 .main-area{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -397,6 +408,96 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);min-hei
 }
 `;
 
+/* ─── NAV ICONS ──────────────────────────────────────────────────── */
+function NavIcon({ name, size = 20 }) {
+  const s = size;
+  const props = { width:s, height:s, viewBox:"0 0 24 24", fill:"none", stroke:"currentColor", strokeWidth:"1.8", strokeLinecap:"round", strokeLinejoin:"round" };
+  switch (name) {
+    case "Groups":
+      return <svg {...props}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
+    case "Search":
+      return <svg {...props}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>;
+    case "Map":
+      return <svg {...props}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>;
+    case "Ranks":
+      return <svg {...props}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>;
+    case "Profile":
+      return <svg {...props}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
+    default:
+      return null;
+  }
+}
+
+/* ─── CREATE GROUP MODAL ─────────────────────────────────────────── */
+function CreateGroupModal({ myProfile, onClose, onCreate }) {
+  const [form, setForm] = useState({ name:"", desc:"", type:"open", max:"20", tags:"" });
+  const canSubmit = form.name.trim().length > 0;
+
+  const submit = () => {
+    if (!canSubmit) return;
+    const newGroup = {
+      id: "local_" + Date.now(),
+      name: form.name.trim(),
+      desc: form.desc.trim(),
+      type: form.type,
+      max: parseInt(form.max) || 20,
+      tags: form.tags.split(",").map(t=>t.trim()).filter(Boolean),
+      memberIds: [myProfile.id],
+      admin: myProfile.id,
+      lastActive: "just now",
+      messages: [],
+      pendingRequests: [],
+    };
+    onCreate(newGroup);
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="modal-sheet fade">
+        <div className="modal-handle"/>
+        <div className="modal-title">Create Group</div>
+        <div className="modal-sub">Start a new crew for your buddies</div>
+
+        <div style={{marginBottom:12}}>
+          <label className="inp-label">Group Name</label>
+          <input className="inp" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="e.g. PDX Street Kings"/>
+        </div>
+
+        <div style={{marginBottom:12}}>
+          <label className="inp-label">Description</label>
+          <input className="inp" value={form.desc} onChange={e=>setForm({...form,desc:e.target.value})} placeholder="What's this group about?"/>
+        </div>
+
+        <div style={{marginBottom:12}}>
+          <label className="inp-label">Type</label>
+          <div className="seg">
+            <button className={`seg-opt ${form.type==="open"?"on":""}`} onClick={()=>setForm({...form,type:"open"})}>Open</button>
+            <button className={`seg-opt ${form.type==="private"?"on":""}`} onClick={()=>setForm({...form,type:"private"})}>Private</button>
+          </div>
+        </div>
+
+        <div style={{marginBottom:12}}>
+          <label className="inp-label">Max Members</label>
+          <input className="inp" type="number" value={form.max} onChange={e=>setForm({...form,max:e.target.value})} placeholder="20" min="2" max="100"/>
+        </div>
+
+        <div style={{marginBottom:20}}>
+          <label className="inp-label">Tags (comma-separated)</label>
+          <input className="inp" value={form.tags} onChange={e=>setForm({...form,tags:e.target.value})} placeholder="e.g. street, honda, pdx"/>
+        </div>
+
+        <button className="btn btn-primary btn-full" style={{borderRadius:12,padding:"14px",marginBottom:10}} disabled={!canSubmit} onClick={submit}>
+          Create Group
+        </button>
+        <button className="btn btn-secondary btn-full" style={{borderRadius:12,padding:"12px"}} onClick={onClose}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ─── TIER BADGE ─────────────────────────────────────────────────── */
 function TierBadge({ wins }) {
   const t = getTier(wins);
@@ -422,6 +523,7 @@ export default function App() {
   const [chatGroupId, setChatGroupId] = useState(null);
   const [myProfile, setMyProfile] = useState({...BLANK_PROFILE});
   const [editingProfile, setEditingProfile] = useState(false);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -488,6 +590,10 @@ export default function App() {
     await supabase.auth.signOut();
   };
 
+  const handleCreateGroup = (newGroup) => {
+    setGroups(gs => [...gs, newGroup]);
+  };
+
   if (authLoading) {
     return (
       <>
@@ -517,11 +623,11 @@ export default function App() {
   const showNav = !playerView && !chatGroupId && !editingProfile;
 
   const TABS = [
-    {name:"Groups", icon:"👥"},
-    {name:"Search", icon:"🔍"},
-    {name:"Map",    icon:"📍"},
-    {name:"Ranks",  icon:"🏆"},
-    {name:"Profile",icon:"👤"},
+    {name:"Groups"},
+    {name:"Search"},
+    {name:"Map"},
+    {name:"Ranks"},
+    {name:"Profile"},
   ];
 
   const activeTab = !playerView && !chatGroupId && !editingProfile ? tab : null;
@@ -552,9 +658,9 @@ export default function App() {
             </div>
           </div>
           <nav className="sidebar-nav">
-            {TABS.map(({name,icon})=>(
+            {TABS.map(({name})=>(
               <button key={name} className={`sidebar-ni ${activeTab===name?"on":""}`} onClick={()=>goTab(name)}>
-                <span className="sidebar-ni-icon">{icon}</span>
+                <span className="sidebar-ni-icon"><NavIcon name={name} size={18}/></span>
                 <span>{name}</span>
                 {name==="Groups"&&pendingCount>0&&<span className="sidebar-notif">{pendingCount}</span>}
               </button>
@@ -601,16 +707,24 @@ export default function App() {
             ) : (
               <ProfileView myProfile={myProfile} friends={friends} groups={groups}
                 openPlayer={setPlayerView} onEdit={()=>setEditingProfile(true)}
+                onCreateGroup={()=>setCreateGroupOpen(true)}
                 allUsers={allUsers} />
+            )}
+            {createGroupOpen && (
+              <CreateGroupModal
+                myProfile={myProfile}
+                onClose={()=>setCreateGroupOpen(false)}
+                onCreate={handleCreateGroup}
+              />
             )}
           </div>
 
           {/* Mobile bottom nav */}
           {showNav && (
             <nav className="nav">
-              {TABS.map(({name,icon})=>(
+              {TABS.map(({name})=>(
                 <button key={name} className={`ni ${tab===name?"on":""}`} onClick={()=>setTab(name)}>
-                  <span className="ni-icon">{icon}</span>
+                  <span className="ni-icon"><NavIcon name={name} size={22}/></span>
                   <span>{name}</span>
                   {tab===name && <div className="ni-dot"/>}
                   {name==="Groups"&&pendingCount>0&&<span className="notif-dot"/>}
@@ -753,7 +867,7 @@ function SearchView({ isFriend, sentFR, addFR, openPlayer, groups, isInGroup, se
       </div>
 
       <div className="srch-wrap">
-        <span className="srch-icon">🔍</span>
+        <span className="srch-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></span>
         <input className="srch-inp" placeholder={mode==="Users"?"Search username, car, city…":"Search groups…"}
           value={q} onChange={e=>setQ(e.target.value)} />
         {q&&<button className="srch-x" onClick={()=>setQ("")}>×</button>}
@@ -1221,7 +1335,7 @@ function RanksView({ openPlayer, myProfile, allUsers }) {
 }
 
 /* ─── PROFILE VIEW ───────────────────────────────────────────────── */
-function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, allUsers }) {
+function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateGroup, allUsers }) {
   const myGroups = groups.filter(g=>g.memberIds.includes(myProfile.id));
   const myFriends = allUsers.filter(p=>friends.includes(p.id));
   const totalW = tw(myProfile.wins);
@@ -1347,7 +1461,13 @@ function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, allUsers 
       ))}
 
       {/* Groups */}
-      <div className="sec-lbl" style={{marginTop:6}}>My Groups ({myGroups.length})</div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 16px 8px"}}>
+        <span className="sec-lbl" style={{marginTop:0,marginBottom:0,padding:0}}>My Groups ({myGroups.length})</span>
+        <button className="btn btn-secondary btn-sm" onClick={onCreateGroup} style={{fontSize:12,gap:4}}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Create Group
+        </button>
+      </div>
       {myGroups.length===0&&<div className="empty" style={{textAlign:"left",padding:"10px 16px"}}>No groups yet.</div>}
       {myGroups.map(g=>(
         <div key={g.id} style={{background:"var(--s2)",borderRadius:14,margin:"0 16px 8px",border:"1px solid var(--border)",padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
