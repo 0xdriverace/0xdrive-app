@@ -47,8 +47,19 @@ const BLANK_PROFILE = {
   races: {h2h:0, group:0, trial:0, drag:0},
   times: {half_mile:"", quarter_mile:"", zero_sixty:"", zero_120:""},
   socials: {instagram:"", twitter:"", youtube:""},
+  instagram: "",
   lat: null,
   lng: null,
+};
+
+const BLANK_CAR = {
+  id: null,
+  make: "",
+  model: "",
+  year: "",
+  trim: "",
+  mods: "",
+  photoUrl: "",
 };
 
 const tw = w => Object.values(w).reduce((a,b)=>a+b,0);
@@ -77,8 +88,22 @@ function profileFromRow(row) {
     showRealName: row.show_real_name ?? false,
     avatar: row.avatar_initials || initials,
     city: row.city || "",
+    instagram: row.instagram || "",
+    socials: { instagram: row.instagram || "", twitter: "", youtube: "" },
     lat: row.lat ?? null,
     lng: row.lng ?? null,
+  };
+}
+
+function carFromRow(row) {
+  return {
+    id: row.id,
+    make: row.make || "",
+    model: row.model || "",
+    year: row.year?.toString() || "",
+    trim: row.trim || "",
+    mods: row.mods || "",
+    photoUrl: row.photos?.[0] || "",
   };
 }
 
@@ -331,6 +356,33 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);min-hei
 .seg-opt{flex:1;padding:9px;text-align:center;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer;transition:all .12s;border:none;background:none;font-family:var(--font-sans)}
 .seg-opt.on{background:var(--blue);color:#fff}
 
+/* CAR SHOWCASE */
+.car-showcase{margin:0 16px 10px;border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border2);background:var(--s2)}
+.car-photo-wrap{width:100%;aspect-ratio:16/9;overflow:hidden;background:var(--s3);position:relative;cursor:pointer}
+.car-photo-wrap img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .3s ease}
+.car-photo-wrap:hover img{transform:scale(1.02)}
+.car-photo-empty{width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--muted2);cursor:pointer;transition:background .15s}
+.car-photo-empty:hover{background:var(--s2)}
+.car-photo-label{font-size:11px;letter-spacing:.5px;font-weight:500}
+.car-info-block{padding:16px 18px 18px}
+.car-year-badge{display:inline-flex;align-items:center;font-family:var(--font-mono);font-size:11px;font-weight:500;color:var(--blue);background:rgba(0,102,255,.1);border:1px solid rgba(0,102,255,.2);padding:3px 10px;border-radius:var(--radius-sm);margin-bottom:10px;letter-spacing:.5px}
+.car-make-model{font-size:28px;font-weight:700;color:var(--text);line-height:1.1;font-family:var(--font-display);letter-spacing:.5px;word-break:break-word}
+.car-trim{font-size:12px;color:var(--muted);margin-top:5px;font-weight:500;letter-spacing:.01em}
+.car-mods-section{margin-top:16px;padding-top:14px;border-top:1px solid var(--border)}
+.car-mods-label{font-size:9px;font-weight:600;letter-spacing:1.8px;color:var(--muted2);text-transform:uppercase;margin-bottom:8px}
+.car-mods-text{font-size:12px;color:var(--text2);line-height:1.7;font-family:var(--font-mono)}
+.car-empty-state{padding:24px 18px;text-align:center}
+.car-empty-icon{color:var(--muted2);margin-bottom:10px}
+.car-empty-text{font-size:13px;color:var(--muted);margin-bottom:14px}
+
+/* PHOTO UPLOAD */
+.photo-upload-wrap{width:100%;aspect-ratio:16/9;border-radius:var(--radius-md);overflow:hidden;background:var(--s3);border:1px solid var(--border);position:relative;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--muted2);margin-bottom:10px;transition:border-color .15s}
+.photo-upload-wrap:hover{border-color:var(--blue)}
+.photo-upload-wrap img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0}
+.photo-upload-overlay{position:absolute;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;opacity:0;transition:opacity .15s}
+.photo-upload-wrap:hover .photo-upload-overlay{opacity:1}
+.photo-upload-hint{font-size:11px;color:#fff;letter-spacing:.3px}
+
 /* ── SIDEBAR (desktop only) ───────────────────────── */
 .sidebar{display:none}
 .main-area{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -525,6 +577,7 @@ export default function App() {
   const [myProfile, setMyProfile] = useState({...BLANK_PROFILE});
   const [editingProfile, setEditingProfile] = useState(false);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [myCar, setMyCar] = useState({...BLANK_CAR});
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -549,10 +602,11 @@ export default function App() {
 
   const loadData = async (userId) => {
     try {
-      const [profileRes, usersRes, groupsRes] = await Promise.all([
+      const [profileRes, usersRes, groupsRes, myCarRes] = await Promise.all([
         supabase.from("profiles").select("*").eq("id", userId).single(),
         supabase.from("profiles").select("*").neq("id", userId),
         supabase.from("groups").select("*, group_members(user_id, role, status)"),
+        supabase.from("user_cars").select("*").eq("user_id", userId).eq("is_primary", true).maybeSingle(),
       ]);
 
       if (profileRes.data) {
@@ -579,6 +633,10 @@ export default function App() {
           messages: [],
           pendingRequests: [],
         })));
+      }
+
+      if (myCarRes.data) {
+        setMyCar(carFromRow(myCarRes.data));
       }
     } catch (err) {
       console.error("Error loading data:", err);
@@ -679,7 +737,8 @@ export default function App() {
           <Header myProfile={myProfile} onLogout={handleLogout} />
           <div className="content fade" key={tab+playerView+chatGroupId+editingProfile}>
             {editingProfile ? (
-              <EditProfile myProfile={myProfile} setMyProfile={setMyProfile} onBack={()=>setEditingProfile(false)} />
+              <EditProfile myProfile={myProfile} setMyProfile={setMyProfile}
+              myCar={myCar} setMyCar={setMyCar} onBack={()=>setEditingProfile(false)} />
             ) : playerView ? (
               <UserProfile userId={playerView} onBack={()=>setPlayerView(null)}
                 isFriend={isFriend} sentFR={sentFR} addFR={addFR}
@@ -709,7 +768,7 @@ export default function App() {
               <ProfileView myProfile={myProfile} friends={friends} groups={groups}
                 openPlayer={setPlayerView} onEdit={()=>setEditingProfile(true)}
                 onCreateGroup={()=>setCreateGroupOpen(true)}
-                allUsers={allUsers} />
+                myCar={myCar} allUsers={allUsers} />
             )}
             {createGroupOpen && (
               <CreateGroupModal
@@ -937,49 +996,100 @@ function SearchView({ isFriend, sentFR, addFR, openPlayer, groups, isInGroup, se
 /* ─── USER PROFILE ───────────────────────────────────────────────── */
 function UserProfile({ userId, onBack, isFriend, sentFR, addFR, groups, isInGroup, sentGR, joinGroup, reqGroup, allUsers, myProfile }) {
   const p = getU(userId, allUsers, myProfile);
+  const [userCar, setUserCar] = useState(null);
+
+  useEffect(() => {
+    supabase.from("user_cars").select("*")
+      .eq("user_id", userId).eq("is_primary", true).maybeSingle()
+      .then(({ data }) => { if (data) setUserCar(carFromRow(data)); });
+  }, [userId]);
+
   if (!p) return null;
   const isMe = userId === myProfile.id;
   const totalW = tw(p.wins);
   const userGroups = groups.filter(g=>g.memberIds.includes(userId));
-  const socials = Object.entries(p.socials||{}).filter(([,v])=>v);
   const hasTimes = p.times&&Object.values(p.times).some(v=>v);
+  const ig = p.instagram || p.socials?.instagram || "";
+  const hasCar = userCar && userCar.make && userCar.model;
 
   return (
     <div className="fade">
       <button className="back-btn" onClick={onBack}>← Back</button>
 
-      <div style={{padding:"0 16px 16px"}}>
-        <div style={{display:"flex",gap:14,alignItems:"flex-start",marginBottom:16}}>
+      {/* Identity header */}
+      <div style={{padding:"0 16px 14px"}}>
+        <div style={{display:"flex",gap:14,alignItems:"flex-start",marginBottom:12}}>
           <div className={`av s56 ${isMe?"me":""}`}>{p.avatar}</div>
           <div style={{flex:1}}>
-            <div style={{fontSize:13,color:"var(--orange)",fontWeight:600,marginBottom:2}}>@{p.username}</div>
-            {p.showRealName&&<div style={{fontSize:22,fontWeight:700,letterSpacing:-.5,lineHeight:1.1}}>{p.displayName}</div>}
-            {p.car&&<div style={{fontSize:12,color:"var(--muted)",marginTop:4}}>{p.year} {p.car}</div>}
-            {p.city&&<div style={{fontSize:12,color:"var(--muted)",marginTop:2}}>📍 {p.city}</div>}
+            <div style={{fontSize:13,color:"var(--blue)",fontWeight:600,marginBottom:2}}>@{p.username}</div>
+            {p.showRealName&&<div style={{fontSize:21,fontWeight:700,letterSpacing:-.5,lineHeight:1.1}}>{p.displayName}</div>}
+            {p.city&&<div style={{fontSize:11,color:"var(--muted)",marginTop:4}}>📍 {p.city}</div>}
+            {ig&&(
+              <a href={`https://instagram.com/${ig.replace("@","")}`} target="_blank" rel="noopener noreferrer"
+                style={{display:"inline-flex",alignItems:"center",gap:5,marginTop:5,fontSize:12,color:"var(--blue)",textDecoration:"none",fontWeight:500}}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+                @{ig.replace("@","")}
+              </a>
+            )}
             <div style={{display:"flex",gap:8,alignItems:"center",marginTop:8,flexWrap:"wrap"}}>
               <TierBadge wins={totalW} />
-              <span style={{fontSize:11,color:"var(--muted)"}}>#{computeRanks(allUsers,myProfile).find(x=>x.id===userId)?.rank??"-"} Global · {totalW} wins</span>
+              <span style={{fontSize:11,color:"var(--muted)"}}>#{computeRanks(allUsers,myProfile).find(x=>x.id===userId)?.rank??"-"} · {totalW}W</span>
             </div>
           </div>
         </div>
-
         {!isMe&&(
-          <div style={{display:"flex",gap:8,marginBottom:16}}>
-            {!isFriend(userId)&&!sentFR(userId)&&<button className="btn btn-primary" onClick={()=>addFR(userId)}>+ Add Friend</button>}
-            {!isFriend(userId)&&sentFR(userId)&&<button className="btn btn-secondary" disabled>Request Sent</button>}
-            {isFriend(userId)&&<span className="btn btn-green" style={{cursor:"default"}}>✓ Friends</span>}
+          <div style={{display:"flex",gap:8}}>
+            {!isFriend(userId)&&!sentFR(userId)&&<button className="btn btn-primary btn-sm" onClick={()=>addFR(userId)}>+ Add Friend</button>}
+            {!isFriend(userId)&&sentFR(userId)&&<button className="btn btn-secondary btn-sm" disabled>Request Sent</button>}
+            {isFriend(userId)&&<span className="btn btn-green btn-sm" style={{cursor:"default"}}>✓ Friends</span>}
           </div>
         )}
       </div>
 
+      {/* ── Car showcase ── */}
+      {(hasCar || userCar === null) && (
+        <>
+          <div className="sec-lbl">{hasCar ? `${userCar.year} ${userCar.make} ${userCar.model}` : "Car"}</div>
+          <div className="car-showcase">
+            <div className="car-photo-wrap" style={{cursor:"default"}}>
+              {userCar?.photoUrl
+                ? <img src={userCar.photoUrl} alt="car"/>
+                : (
+                  <div className="car-photo-empty" style={{cursor:"default"}}>
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/>
+                      <rect x="9" y="11" width="14" height="10" rx="2"/>
+                      <circle cx="12" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                    </svg>
+                    <span className="car-photo-label" style={{color:"var(--muted2)"}}>No photo</span>
+                  </div>
+                )
+              }
+            </div>
+            {hasCar && (
+              <div className="car-info-block">
+                <div className="car-year-badge">{userCar.year || "—"}</div>
+                <div className="car-make-model">{userCar.make} {userCar.model}</div>
+                {userCar.trim && <div className="car-trim">{userCar.trim}</div>}
+                {userCar.mods && (
+                  <div className="car-mods-section">
+                    <div className="car-mods-label">Modifications</div>
+                    <div className="car-mods-text">{userCar.mods}</div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
       {/* Race Stats */}
       <div className="sec-lbl">Race Stats</div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,padding:"0 16px",marginBottom:10}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,padding:"0 16px",marginBottom:8}}>
         {FORMAT.map(f=>(
-          <div key={f.key} style={{background:"var(--s2)",borderRadius:12,padding:"10px 8px",textAlign:"center",border:"1px solid var(--border)"}}>
-            <div style={{fontSize:11,color:"var(--muted)",marginBottom:4}}>{f.icon}</div>
+          <div key={f.key} style={{background:"var(--s2)",borderRadius:10,padding:"10px 8px",textAlign:"center",border:"1px solid var(--border)"}}>
             <div style={{fontSize:20,fontWeight:700,lineHeight:1}}>{p.wins[f.key]??0}</div>
-            <div style={{fontSize:9,color:"var(--muted)",marginTop:3,letterSpacing:.5}}>{f.short}</div>
+            <div style={{fontSize:9,color:"var(--muted2)",marginTop:3,letterSpacing:.5,textTransform:"uppercase"}}>{f.short}</div>
           </div>
         ))}
       </div>
@@ -998,29 +1108,13 @@ function UserProfile({ userId, onBack, isFriend, sentFR, addFR, groups, isInGrou
         </div>
       </>)}
 
-      {/* Socials */}
-      {socials.length>0&&(<>
-        <div className="sec-lbl">Socials</div>
-        <div className="list-card" style={{margin:"0 16px 10px"}}>
-          {socials.map(([platform,handle])=>(
-            <div key={platform} className="social-item">
-              <div className="social-icon">{platform==="instagram"?"📸":platform==="twitter"?"𝕏":"▶️"}</div>
-              <div>
-                <div className="social-platform">{platform}</div>
-                <div className="social-handle">{handle}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </>)}
-
       {/* Groups */}
       {userGroups.length>0&&!isMe&&(<>
         <div className="sec-lbl">Groups</div>
         {userGroups.map(g=>(
           <div key={g.id} className="card" style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <div>
-              <div style={{fontSize:15,fontWeight:600}}>{g.name}</div>
+              <div style={{fontSize:14,fontWeight:600}}>{g.name}</div>
               <span className={`gc-type-pill ${g.type}`} style={{marginTop:4,display:"inline-block"}}>{g.type}</span>
             </div>
             {isInGroup(g.id)
@@ -1032,6 +1126,7 @@ function UserProfile({ userId, onBack, isFriend, sentFR, addFR, groups, isInGrou
           </div>
         ))}
       </>)}
+      <div style={{height:20}}/>
     </div>
   );
 }
@@ -1336,7 +1431,7 @@ function RanksView({ openPlayer, myProfile, allUsers }) {
 }
 
 /* ─── PROFILE VIEW ───────────────────────────────────────────────── */
-function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateGroup, allUsers }) {
+function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateGroup, myCar, allUsers }) {
   const myGroups = groups.filter(g=>g.memberIds.includes(myProfile.id));
   const myFriends = allUsers.filter(p=>friends.includes(p.id));
   const totalW = tw(myProfile.wins);
@@ -1344,9 +1439,10 @@ function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateG
   const tier = getTier(totalW);
   const nextTier = TIERS[TIERS.indexOf(tier)+1];
   const progress = nextTier?((totalW-tier.min)/(nextTier.min-tier.min))*100:100;
-  const socials = Object.entries(myProfile.socials||{}).filter(([,v])=>v);
   const hasTimes = myProfile.times&&Object.values(myProfile.times).some(v=>v);
   const myRank = computeRanks(allUsers, myProfile).find(x=>x.id===myProfile.id)?.rank??"-";
+  const hasCar = myCar.make && myCar.model;
+  const ig = myProfile.instagram || myProfile.socials?.instagram || "";
 
   return (
     <div>
@@ -1358,59 +1454,97 @@ function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateG
         <button className="btn btn-secondary btn-sm" onClick={onEdit} style={{marginTop:4}}>Edit</button>
       </div>
 
-      {/* Hero card */}
-      <div className="card" style={{marginBottom:10}}>
-        <div style={{display:"flex",gap:14,alignItems:"flex-start",marginBottom:14}}>
+      {/* ── CAR SHOWCASE — centerpiece ── */}
+      <div className="car-showcase">
+        <div className="car-photo-wrap" onClick={onEdit}>
+          {myCar.photoUrl
+            ? <img src={myCar.photoUrl} alt="car"/>
+            : (
+              <div className="car-photo-empty">
+                <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/>
+                  <rect x="9" y="11" width="14" height="10" rx="2"/>
+                  <circle cx="12" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                </svg>
+                <span className="car-photo-label">{hasCar ? "Add photo" : "Set up your car"}</span>
+              </div>
+            )
+          }
+        </div>
+
+        {hasCar ? (
+          <div className="car-info-block">
+            <div className="car-year-badge">{myCar.year || "—"}</div>
+            <div className="car-make-model">{myCar.make} {myCar.model}</div>
+            {myCar.trim && <div className="car-trim">{myCar.trim}</div>}
+            {myCar.mods && (
+              <div className="car-mods-section">
+                <div className="car-mods-label">Modifications</div>
+                <div className="car-mods-text">{myCar.mods}</div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="car-empty-state">
+            <div className="car-empty-text">Add your build to your profile</div>
+            <button className="btn btn-primary btn-sm" onClick={onEdit}>+ Add Car</button>
+          </div>
+        )}
+      </div>
+
+      {/* Hero identity card */}
+      <div className="card" style={{marginBottom:8}}>
+        <div style={{display:"flex",gap:14,alignItems:"flex-start",marginBottom:12}}>
           <div className="av s56 me">{myProfile.avatar}</div>
           <div style={{flex:1}}>
-            <div style={{fontSize:13,color:"var(--orange)",fontWeight:600,marginBottom:2}}>@{myProfile.username}</div>
-            {myProfile.showRealName&&<div style={{fontSize:20,fontWeight:700,letterSpacing:-.5,lineHeight:1.1}}>{myProfile.displayName}</div>}
-            {myProfile.car&&<div style={{fontSize:12,color:"var(--muted)",marginTop:4}}>{myProfile.year} {myProfile.car}</div>}
-            {myProfile.city&&<div style={{fontSize:12,color:"var(--muted)",marginTop:2}}>📍 {myProfile.city}</div>}
+            <div style={{fontSize:13,color:"var(--blue)",fontWeight:600,marginBottom:2}}>@{myProfile.username}</div>
+            {myProfile.showRealName&&<div style={{fontSize:19,fontWeight:700,letterSpacing:-.5,lineHeight:1.1}}>{myProfile.displayName}</div>}
+            {myProfile.city&&<div style={{fontSize:11,color:"var(--muted)",marginTop:4}}>📍 {myProfile.city}</div>}
+            {ig && (
+              <a href={`https://instagram.com/${ig.replace("@","")}`} target="_blank" rel="noopener noreferrer"
+                style={{display:"inline-flex",alignItems:"center",gap:5,marginTop:5,fontSize:12,color:"var(--blue)",textDecoration:"none",fontWeight:500}}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+                @{ig.replace("@","")}
+              </a>
+            )}
             <div style={{display:"flex",gap:8,alignItems:"center",marginTop:8,flexWrap:"wrap"}}>
               <TierBadge wins={totalW} />
               <span style={{fontSize:11,color:"var(--muted)"}}>Rank #{myRank} Global</span>
             </div>
           </div>
         </div>
-        {/* Progress bar */}
         <div style={{marginBottom:4,display:"flex",justifyContent:"space-between"}}>
           <span style={{fontSize:10,color:tier.color,fontWeight:600,letterSpacing:.5}}>{tier.name.toUpperCase()} · {totalW} WINS</span>
           {nextTier&&<span style={{fontSize:10,color:"var(--muted)"}}>→ {nextTier.name} at {nextTier.min}W</span>}
         </div>
-        <div style={{height:4,background:"var(--s3)",borderRadius:2,overflow:"hidden"}}>
+        <div style={{height:3,background:"var(--s3)",borderRadius:2,overflow:"hidden"}}>
           <div style={{height:"100%",width:`${Math.min(progress,100)}%`,background:tier.color,borderRadius:2,transition:"width .5s"}}/>
         </div>
       </div>
 
       {/* Stats */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,padding:"0 16px",marginBottom:10}}>
-        <div style={{background:"var(--s2)",borderRadius:12,padding:"12px 8px",textAlign:"center",border:"1px solid var(--border)"}}>
-          <div style={{fontSize:26,fontWeight:700,lineHeight:1,color:"var(--text)"}}>{totalW}</div>
-          <div style={{fontSize:9,color:"var(--muted)",marginTop:4,letterSpacing:.5,textTransform:"uppercase"}}>Wins</div>
-        </div>
-        <div style={{background:"var(--s2)",borderRadius:12,padding:"12px 8px",textAlign:"center",border:"1px solid var(--border)"}}>
-          <div style={{fontSize:26,fontWeight:700,lineHeight:1}}>{totalR}</div>
-          <div style={{fontSize:9,color:"var(--muted)",marginTop:4,letterSpacing:.5,textTransform:"uppercase"}}>Races</div>
-        </div>
-        <div style={{background:"var(--s2)",borderRadius:12,padding:"12px 8px",textAlign:"center",border:"1px solid var(--border)"}}>
-          <div style={{fontSize:26,fontWeight:700,lineHeight:1,color:"var(--green)"}}>{totalR>0?Math.round((totalW/totalR)*100):0}%</div>
-          <div style={{fontSize:9,color:"var(--muted)",marginTop:4,letterSpacing:.5,textTransform:"uppercase"}}>Rate</div>
-        </div>
-        <div style={{background:"var(--s2)",borderRadius:12,padding:"12px 8px",textAlign:"center",border:"1px solid var(--border)"}}>
-          <div style={{fontSize:26,fontWeight:700,lineHeight:1,color:"var(--orange)"}}>#{myRank}</div>
-          <div style={{fontSize:9,color:"var(--muted)",marginTop:4,letterSpacing:.5,textTransform:"uppercase"}}>Rank</div>
-        </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,padding:"0 16px",marginBottom:8}}>
+        {[
+          {n:totalW,    l:"Wins",  c:"var(--text)"},
+          {n:totalR,    l:"Races", c:"var(--text)"},
+          {n:`${totalR>0?Math.round((totalW/totalR)*100):0}%`, l:"Rate", c:"var(--green)"},
+          {n:`#${myRank}`, l:"Rank", c:"var(--blue)"},
+        ].map(({n,l,c})=>(
+          <div key={l} style={{background:"var(--s2)",borderRadius:10,padding:"11px 8px",textAlign:"center",border:"1px solid var(--border)"}}>
+            <div style={{fontSize:22,fontWeight:700,lineHeight:1,color:c,letterSpacing:"-0.5px"}}>{n}</div>
+            <div style={{fontSize:9,color:"var(--muted2)",marginTop:4,letterSpacing:.8,textTransform:"uppercase"}}>{l}</div>
+          </div>
+        ))}
       </div>
 
       {/* Format breakdown */}
       <div className="sec-lbl">By Format</div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,padding:"0 16px",marginBottom:10}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,padding:"0 16px",marginBottom:8}}>
         {FORMAT.map(f=>(
-          <div key={f.key} style={{background:"var(--s2)",borderRadius:12,padding:"12px",border:"1px solid var(--border)"}}>
-            <div style={{fontSize:13,marginBottom:4}}>{f.icon} <span style={{fontSize:11,color:"var(--muted)",fontWeight:600,letterSpacing:.5,textTransform:"uppercase"}}>{f.label}</span></div>
+          <div key={f.key} style={{background:"var(--s2)",borderRadius:10,padding:"12px",border:"1px solid var(--border)"}}>
+            <div style={{fontSize:11,marginBottom:6,color:"var(--muted2)",fontWeight:600,letterSpacing:.5,textTransform:"uppercase"}}>{f.label}</div>
             <div style={{display:"flex",alignItems:"baseline",gap:4}}>
-              <span style={{fontSize:24,fontWeight:700,lineHeight:1}}>{myProfile.wins[f.key]??0}</span>
+              <span style={{fontSize:22,fontWeight:700,lineHeight:1}}>{myProfile.wins[f.key]??0}</span>
               <span style={{fontSize:11,color:"var(--muted)"}}>/ {myProfile.races[f.key]??0}</span>
             </div>
           </div>
@@ -1431,24 +1565,8 @@ function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateG
         </div>
       </>)}
 
-      {/* Socials */}
-      {socials.length>0&&(<>
-        <div className="sec-lbl">Socials</div>
-        <div className="list-card" style={{margin:"0 16px 10px"}}>
-          {socials.map(([platform,handle])=>(
-            <div key={platform} className="social-item">
-              <div className="social-icon">{platform==="instagram"?"📸":platform==="twitter"?"𝕏":"▶️"}</div>
-              <div>
-                <div className="social-platform">{platform}</div>
-                <div className="social-handle">{handle}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </>)}
-
       {/* Friends */}
-      <div className="sec-lbl">Friends ({myFriends.length})</div>
+      <div className="sec-lbl" style={{marginTop:6}}>Friends ({myFriends.length})</div>
       {myFriends.length===0&&<div className="empty" style={{textAlign:"left",padding:"10px 16px"}}>No friends yet — use Search.</div>}
       {myFriends.map(p=>(
         <div key={p.id} className="user-row" onClick={()=>openPlayer(p.id)}>
@@ -1471,7 +1589,7 @@ function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateG
       </div>
       {myGroups.length===0&&<div className="empty" style={{textAlign:"left",padding:"10px 16px"}}>No groups yet.</div>}
       {myGroups.map(g=>(
-        <div key={g.id} style={{background:"var(--s2)",borderRadius:14,margin:"0 16px 8px",border:"1px solid var(--border)",padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div key={g.id} style={{background:"var(--s2)",borderRadius:12,margin:"0 16px 6px",border:"1px solid var(--border)",padding:"13px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div>
             <div style={{fontSize:14,fontWeight:600}}>{g.name}</div>
             <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>{g.memberIds.length}/{g.max} members · {g.lastActive}</div>
@@ -1485,8 +1603,89 @@ function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateG
 }
 
 /* ─── EDIT PROFILE ───────────────────────────────────────────────── */
-function EditProfile({ myProfile, setMyProfile, onBack }) {
+function EditProfile({ myProfile, setMyProfile, myCar, setMyCar, onBack }) {
   const [form, setForm] = useState({...myProfile});
+  const [carForm, setCarForm] = useState({...myCar});
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(myCar.photoUrl || "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const fileRef = useRef(null);
+
+  const setF = (k, v) => setForm(f=>({...f,[k]:v}));
+  const setC = (k, v) => setCarForm(c=>({...c,[k]:v}));
+
+  const handlePhotoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      // 1. Upload car photo if a new one was selected
+      let photoUrl = carForm.photoUrl;
+      if (photoFile && myProfile.id) {
+        const ext = photoFile.name.split(".").pop() || "jpg";
+        const path = `${myProfile.id}/${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from("car-photos").upload(path, photoFile, { upsert: true });
+        if (upErr) throw upErr;
+        const { data: { publicUrl } } = supabase.storage
+          .from("car-photos").getPublicUrl(path);
+        photoUrl = publicUrl;
+      }
+
+      // 2. Update profile row
+      if (myProfile.id) {
+        await supabase.from("profiles").update({
+          display_name: form.displayName,
+          show_real_name: form.showRealName,
+          city: form.city,
+          instagram: form.instagram,
+          avatar_initials: form.avatar,
+        }).eq("id", myProfile.id);
+      }
+
+      // 3. Upsert car (only if at least make+model are filled)
+      let newCarId = carForm.id;
+      if (carForm.make.trim() && carForm.model.trim() && myProfile.id) {
+        const carPayload = {
+          user_id: myProfile.id,
+          make: carForm.make.trim(),
+          model: carForm.model.trim(),
+          year: parseInt(carForm.year) || null,
+          trim: carForm.trim.trim() || null,
+          mods: carForm.mods.trim() || null,
+          photos: photoUrl ? [photoUrl] : (carForm.photoUrl ? [carForm.photoUrl] : []),
+          is_primary: true,
+        };
+        if (carForm.id) {
+          await supabase.from("user_cars").update(carPayload).eq("id", carForm.id);
+        } else {
+          const { data: inserted } = await supabase.from("user_cars")
+            .insert(carPayload).select("id").single();
+          newCarId = inserted?.id || null;
+        }
+      }
+
+      // 4. Update local state
+      const updatedProfile = { ...form, instagram: form.instagram,
+        socials: { ...form.socials, instagram: form.instagram } };
+      const updatedCar = { ...carForm, id: newCarId, photoUrl };
+      setMyProfile(updatedProfile);
+      setMyCar(updatedCar);
+      onBack();
+    } catch (err) {
+      console.error("Save error:", err);
+      setError("Failed to save. Check your connection and try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="fade">
@@ -1496,51 +1695,112 @@ function EditProfile({ myProfile, setMyProfile, onBack }) {
         <div className="pg-sub">Update your information</div>
       </div>
 
-      <div className="list-card" style={{margin:"0 16px 10px"}}>
+      {/* ── Car section ── */}
+      <div className="sec-lbl">My Car</div>
+      <div className="card" style={{marginBottom:8}}>
+        {/* Photo upload */}
+        <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handlePhotoSelect}/>
+        <div className="photo-upload-wrap" onClick={()=>fileRef.current?.click()}>
+          {photoPreview && <img src={photoPreview} alt="car preview"/>}
+          <div className="photo-upload-overlay">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            <span className="photo-upload-hint">{photoPreview ? "Change photo" : "Add photo"}</span>
+          </div>
+          {!photoPreview && (
+            <>
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              <span style={{fontSize:11,color:"var(--muted2)"}}>Tap to add car photo</span>
+            </>
+          )}
+        </div>
+
+        {/* Car fields */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+          <div>
+            <label className="inp-label">Make</label>
+            <input className="inp" value={carForm.make} onChange={e=>setC("make",e.target.value)} placeholder="Honda"/>
+          </div>
+          <div>
+            <label className="inp-label">Model</label>
+            <input className="inp" value={carForm.model} onChange={e=>setC("model",e.target.value)} placeholder="Civic"/>
+          </div>
+          <div>
+            <label className="inp-label">Year</label>
+            <input className="inp" value={carForm.year} onChange={e=>setC("year",e.target.value)} placeholder="2020" type="number"/>
+          </div>
+          <div>
+            <label className="inp-label">Trim</label>
+            <input className="inp" value={carForm.trim} onChange={e=>setC("trim",e.target.value)} placeholder="Type R"/>
+          </div>
+        </div>
+
+        <div>
+          <label className="inp-label">Modifications</label>
+          <textarea className="inp" rows={4}
+            style={{resize:"vertical",lineHeight:1.6,fontFamily:"var(--font-mono)",fontSize:12}}
+            value={carForm.mods} onChange={e=>setC("mods",e.target.value)}
+            placeholder={"Cold air intake\nCoilover suspension\nMagnaflow catback\n..."}/>
+        </div>
+      </div>
+
+      {/* ── Identity ── */}
+      <div className="sec-lbl">Identity</div>
+      <div className="list-card" style={{margin:"0 16px 8px"}}>
         <div className="toggle-row">
           <div className="toggle-info">
             <div className="toggle-title">Show Real Name</div>
             <div className="toggle-sub">Display your name publicly</div>
           </div>
-          <div className={`toggle ${form.showRealName?"on":""}`} onClick={()=>setForm({...form,showRealName:!form.showRealName})}>
+          <div className={`toggle ${form.showRealName?"on":""}`} onClick={()=>setF("showRealName",!form.showRealName)}>
             <div className="toggle-knob"/>
           </div>
         </div>
       </div>
-
-      <div className="sec-lbl">Identity</div>
-      <div className="card" style={{display:"flex",flexDirection:"column",gap:10}}>
-        {[["Username","username","@username"],["Display Name","displayName","Your real name"],["Car","car","Your car"],["Year","year","Year"],["City","city","City, State"]].map(([label,key,ph])=>(
+      <div className="card" style={{display:"flex",flexDirection:"column",gap:10,marginBottom:8}}>
+        {[["Display Name","displayName","Your real name"],["City","city","City, State"]].map(([label,key,ph])=>(
           <div key={key}>
             <label className="inp-label">{label}</label>
-            <input className="inp" value={form[key]||""} onChange={e=>setForm({...form,[key]:e.target.value})} placeholder={ph}/>
+            <input className="inp" value={form[key]||""} onChange={e=>setF(key,e.target.value)} placeholder={ph}/>
           </div>
         ))}
       </div>
 
+      {/* ── Instagram ── */}
+      <div className="sec-lbl">Instagram</div>
+      <div className="card" style={{marginBottom:8}}>
+        <label className="inp-label">Handle</label>
+        <div style={{position:"relative"}}>
+          <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--muted2)",display:"flex",alignItems:"center"}}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+          </span>
+          <input className="inp" style={{paddingLeft:36}} value={form.instagram||""} onChange={e=>setF("instagram",e.target.value)} placeholder="@yourhandle"/>
+        </div>
+        {form.instagram && (
+          <a href={`https://instagram.com/${(form.instagram||"").replace("@","")}`}
+            target="_blank" rel="noopener noreferrer"
+            style={{display:"inline-block",marginTop:8,fontSize:12,color:"var(--blue)"}}>
+            instagram.com/{(form.instagram||"").replace("@","")} ↗
+          </a>
+        )}
+      </div>
+
+      {/* ── Race Times ── */}
       <div className="sec-lbl">Recorded Times</div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,padding:"0 16px",marginBottom:10}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,padding:"0 16px",marginBottom:8}}>
         {RACE_TIMES.map(t=>(
-          <div key={t.key} style={{background:"var(--s2)",borderRadius:12,padding:"12px",border:"1px solid var(--border)"}}>
+          <div key={t.key} style={{background:"var(--s2)",borderRadius:10,padding:"12px",border:"1px solid var(--border)"}}>
             <label className="inp-label" style={{padding:0,marginBottom:6}}>{t.label} ({t.unit})</label>
-            <input className="inp" style={{marginBottom:0,padding:"8px 10px",fontSize:13}} value={form.times?.[t.key]||""} onChange={e=>setForm({...form,times:{...form.times,[t.key]:e.target.value}})} placeholder="e.g. 3.8"/>
+            <input className="inp" style={{padding:"8px 10px",fontSize:13}} value={form.times?.[t.key]||""} onChange={e=>setF("times",{...form.times,[t.key]:e.target.value})} placeholder="e.g. 3.8"/>
           </div>
         ))}
       </div>
 
-      <div className="sec-lbl">Social Media</div>
-      <div className="card" style={{display:"flex",flexDirection:"column",gap:10}}>
-        {[["📸 Instagram","instagram","@handle"],["𝕏 Twitter","twitter","@handle"],["▶️ YouTube","youtube","@channel"]].map(([label,key,ph])=>(
-          <div key={key}>
-            <label className="inp-label">{label}</label>
-            <input className="inp" value={form.socials?.[key]||""} onChange={e=>setForm({...form,socials:{...form.socials,[key]:e.target.value}})} placeholder={ph}/>
-          </div>
-        ))}
-      </div>
+      {error && <div style={{margin:"0 16px 10px",padding:"10px 14px",background:"rgba(255,59,48,.1)",border:"1px solid rgba(255,59,48,.25)",borderRadius:8,fontSize:12,color:"var(--red)"}}>{error}</div>}
 
-      <div style={{padding:"10px 16px 30px"}}>
-        <button className="btn btn-primary btn-full" style={{borderRadius:12,padding:"14px"}} onClick={()=>{setMyProfile(form);onBack();}}>
-          Save Changes
+      <div style={{padding:"4px 16px 32px"}}>
+        <button className="btn btn-primary btn-full" style={{borderRadius:10,padding:"14px"}}
+          onClick={handleSave} disabled={saving}>
+          {saving ? "Saving…" : "Save Changes"}
         </button>
       </div>
     </div>
