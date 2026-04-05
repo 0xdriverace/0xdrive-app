@@ -271,6 +271,26 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);min-hei
 .mapboxgl-ctrl-group button:hover{background:var(--s3)!important}
 .mapboxgl-ctrl-icon{filter:invert(1)}
 
+/* GROUP CARDS — enhanced */
+.gc-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.gc-member-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);font-weight:500;background:var(--s3);padding:3px 9px;border-radius:var(--radius-full);border:1px solid var(--border)}
+.gc-actions{display:flex;gap:8px;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+.gc-last-active{font-size:10px;color:var(--muted2);flex:1}
+
+/* CHAT */
+.chat-msgs{display:flex;flex-direction:column;gap:10px;padding:0 16px 8px;overflow-y:auto;max-height:50vh;min-height:180px}
+.msg-row{display:flex;gap:8px;align-items:flex-end}
+.msg-row.mine{flex-direction:row-reverse}
+.msg-bubble{background:var(--s2);border:1px solid var(--border);border-radius:12px 12px 12px 3px;padding:9px 12px;max-width:82%}
+.msg-bubble.mine{background:rgba(0,102,255,.12);border-color:rgba(0,102,255,.25);border-radius:12px 12px 3px 12px}
+.msg-meta{display:flex;align-items:center;gap:5px;margin-bottom:3px;flex-wrap:wrap}
+.msg-who{font-size:11px;font-weight:600;color:var(--blue)}
+.msg-car{font-size:9px;color:var(--muted2);font-family:var(--font-mono)}
+.msg-text{font-size:13px;line-height:1.5;color:var(--text)}
+.msg-time{font-size:9px;color:var(--muted2);margin-top:3px}
+.chat-input-bar{position:sticky;bottom:0;background:var(--bg);border-top:1px solid var(--border);padding:10px 16px 12px;display:flex;gap:8px;align-items:center}
+.av.s28{width:28px;height:28px;font-size:8px}
+
 /* LEADERBOARD */
 .lb-row{display:flex;align-items:center;gap:12px;padding:13px 16px;background:var(--s2);border-radius:var(--radius-lg);margin:0 16px 6px;border:1px solid var(--border);cursor:pointer;transition:background var(--transition-fast)}
 .lb-row:active{background:var(--s3)}
@@ -504,26 +524,16 @@ function NavIcon({ name, size = 20 }) {
 }
 
 /* ─── CREATE GROUP MODAL ─────────────────────────────────────────── */
-function CreateGroupModal({ myProfile, onClose, onCreate }) {
+function CreateGroupModal({ myProfile, onClose, onCreateDB }) {
   const [form, setForm] = useState({ name:"", desc:"", type:"open", max:"20", tags:"" });
-  const canSubmit = form.name.trim().length > 0;
+  const [saving, setSaving] = useState(false);
+  const canSubmit = form.name.trim().length > 0 && !saving;
 
-  const submit = () => {
+  const submit = async () => {
     if (!canSubmit) return;
-    const newGroup = {
-      id: "local_" + Date.now(),
-      name: form.name.trim(),
-      desc: form.desc.trim(),
-      type: form.type,
-      max: parseInt(form.max) || 20,
-      tags: form.tags.split(",").map(t=>t.trim()).filter(Boolean),
-      memberIds: [myProfile.id],
-      admin: myProfile.id,
-      lastActive: "just now",
-      messages: [],
-      pendingRequests: [],
-    };
-    onCreate(newGroup);
+    setSaving(true);
+    await onCreateDB(form);
+    setSaving(false);
     onClose();
   };
 
@@ -563,7 +573,7 @@ function CreateGroupModal({ myProfile, onClose, onCreate }) {
         </div>
 
         <button className="btn btn-primary btn-full" style={{borderRadius:12,padding:"14px",marginBottom:10}} disabled={!canSubmit} onClick={submit}>
-          Create Group
+          {saving ? "Creating…" : "Create Group"}
         </button>
         <button className="btn btn-secondary btn-full" style={{borderRadius:12,padding:"12px"}} onClick={onClose}>
           Cancel
@@ -675,6 +685,32 @@ export default function App() {
     setGroups(gs => [...gs, newGroup]);
   };
 
+  const handleCreateGroupDB = async (form) => {
+    const { data: grp, error } = await supabase.from("groups").insert({
+      name: form.name.trim(),
+      description: form.desc.trim() || null,
+      is_private: form.type === "private",
+      max_members: parseInt(form.max) || 20,
+      tags: form.tags.split(",").map(t=>t.trim()).filter(Boolean),
+      created_by: myId,
+    }).select().single();
+    if (error || !grp) { console.error("Create group error:", error); return; }
+    await supabase.from("group_members").insert({ group_id:grp.id, user_id:myId, role:"owner", status:"active" });
+    setGroups(gs => [...gs, {
+      id: grp.id,
+      name: grp.name,
+      desc: grp.description || "",
+      type: grp.is_private ? "private" : "open",
+      max: grp.max_members,
+      tags: grp.tags || [],
+      memberIds: [myId],
+      admin: myId,
+      lastActive: "just now",
+      messages: [],
+      pendingRequests: [],
+    }]);
+  };
+
   if (authLoading) {
     return (
       <>
@@ -695,9 +731,12 @@ export default function App() {
 
   const isInGroup = gid => groups.find(g=>g.id===gid)?.memberIds.includes(myId);
   const sentGR    = gid => groupReqs.includes(gid);
-  const joinGroup = gid => setGroups(gs=>gs.map(g=>
-    g.id===gid && !g.memberIds.includes(myId) ? {...g, memberIds:[...g.memberIds, myId]} : g
-  ));
+  const joinGroup = async (gid) => {
+    const already = groups.find(g=>g.id===gid)?.memberIds.includes(myId);
+    if (already) return;
+    setGroups(gs=>gs.map(g=>g.id===gid?{...g,memberIds:[...g.memberIds,myId]}:g));
+    await supabase.from("group_members").upsert({ group_id:gid, user_id:myId, role:"member", status:"active" }, { onConflict:"group_id,user_id" });
+  };
   const reqGroup = gid => { if (!sentGR(gid)) setGroupReqs(r=>[...r,gid]); };
 
   const pendingCount = groups.reduce((a,g)=>a+(g.pendingRequests?.length||0),0);
@@ -768,7 +807,7 @@ export default function App() {
                 joinGroup={joinGroup} reqGroup={reqGroup}
                 allUsers={allUsers} myProfile={myProfile} />
             ) : chatGroupId ? (
-              <ChatView groupId={chatGroupId} groups={groups} setGroups={setGroups}
+              <ChatView groupId={chatGroupId} groups={groups}
                 onBack={()=>setChatGroupId(null)} openPlayer={setPlayerView}
                 myProfile={myProfile} allUsers={allUsers} />
             ) : tab==="Groups" ? (
@@ -796,7 +835,7 @@ export default function App() {
               <CreateGroupModal
                 myProfile={myProfile}
                 onClose={()=>setCreateGroupOpen(false)}
-                onCreate={handleCreateGroup}
+                onCreateDB={handleCreateGroupDB}
               />
             )}
           </div>
@@ -895,28 +934,31 @@ function GroupsView({ groups, setGroups, isInGroup, sentGR, joinGroup, reqGroup,
 
       {groups.map(g=>(
         <div key={g.id} className="card">
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
-            <span className={`gc-type-pill ${g.type}`}>{g.type==="private"?"Private":"Open"}</span>
-            <span style={{fontSize:11,color:"var(--muted)"}}>{g.memberIds.length}/{g.max} members</span>
+          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:6}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span className={`gc-type-pill ${g.type}`}>{g.type==="private"?"Private":"Open"}</span>
+              {isInGroup(g.id)&&<span style={{fontSize:10,color:"var(--accent)",fontWeight:600,letterSpacing:.5}}>JOINED</span>}
+            </div>
+            <span className="gc-member-badge">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              {g.memberIds.length}/{g.max}
+            </span>
           </div>
           <div className="gc-name">{g.name}</div>
           {g.desc&&<div className="gc-desc">{g.desc}</div>}
-          {g.tags.length>0&&<div className="tags">{g.tags.map(t=><span key={t} className="tag">{t}</span>)}</div>}
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <span style={{fontSize:11,color:"var(--muted)"}}>Active {g.lastActive}</span>
-            <div style={{display:"flex",gap:8}}>
-              {isInGroup(g.id)&&<button className="btn btn-secondary btn-sm" onClick={()=>openChat(g.id)}>Chat →</button>}
-              {!isInGroup(g.id)&&!sentGR(g.id)&&(
-                <button className="btn btn-primary btn-sm" onClick={()=>{
-                  if (g.type==="open") joinGroup(g.id);
-                  else {
-                    setGroups(gs=>gs.map(x=>x.id===g.id?{...x,pendingRequests:[...(x.pendingRequests||[]),myProfile.id]}:x));
-                    reqGroup(g.id);
-                  }
-                }}>{g.type==="open"?"Join":"Request to Join"}</button>
-              )}
-              {!isInGroup(g.id)&&sentGR(g.id)&&<button className="btn btn-orange btn-sm" disabled>Pending</button>}
-            </div>
+          {g.tags?.length>0&&<div className="tags">{g.tags.map(t=><span key={t} className="tag">{t}</span>)}</div>}
+          <div className="gc-actions">
+            {isInGroup(g.id)&&<button className="btn btn-secondary btn-sm" onClick={()=>openChat(g.id)}>Open Chat →</button>}
+            {!isInGroup(g.id)&&!sentGR(g.id)&&(
+              <button className="btn btn-primary btn-sm" onClick={()=>{
+                if (g.type==="open") joinGroup(g.id);
+                else {
+                  setGroups(gs=>gs.map(x=>x.id===g.id?{...x,pendingRequests:[...(x.pendingRequests||[]),myProfile.id]}:x));
+                  reqGroup(g.id);
+                }
+              }}>{g.type==="open"?"Join Group":"Request to Join"}</button>
+            )}
+            {!isInGroup(g.id)&&sentGR(g.id)&&<button className="btn btn-secondary btn-sm" disabled>Pending…</button>}
           </div>
         </div>
       ))}
@@ -1154,19 +1196,108 @@ function UserProfile({ userId, onBack, isFriend, sentFR, addFR, groups, isInGrou
 }
 
 /* ─── CHAT VIEW ──────────────────────────────────────────────────── */
-function ChatView({ groupId, groups, setGroups, onBack, openPlayer, myProfile, allUsers }) {
+function ChatView({ groupId, groups, onBack, openPlayer, myProfile, allUsers }) {
   const g = groups.find(x=>x.id===groupId);
+  const [messages, setMessages] = useState([]);
+  const [memberCars, setMemberCars] = useState({}); // userId -> "year make model"
   const [input, setInput] = useState("");
-  const [voiceOn, setVoiceOn] = useState(false);
-  const [muted, setMuted] = useState(false);
+  const [loading, setLoading] = useState(true);
   const endRef = useRef(null);
+  const knownIds = useRef(new Set());
 
-  useEffect(()=>{ endRef.current?.scrollIntoView({behavior:"smooth"}); },[g?.messages.length]);
+  // Format timestamp
+  const fmt = (ts) => {
+    if (!ts) return "";
+    const d = new Date(ts);
+    const now = new Date();
+    const diff = now - d;
+    if (diff < 60000) return "just now";
+    if (diff < 3600000) return `${Math.floor(diff/60000)}m ago`;
+    if (diff < 86400000) return d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+    return d.toLocaleDateString([],{month:"short",day:"numeric"});
+  };
 
-  const send = () => {
-    if (!input.trim()) return;
-    setGroups(gs=>gs.map(x=>x.id===groupId?{...x,messages:[...x.messages,{uid:myProfile.id,text:input.trim(),time:"just now"}]}:x));
+  // Load message history
+  useEffect(() => {
+    if (!groupId) return;
+    setLoading(true);
+    knownIds.current = new Set();
+    setMessages([]);
+
+    supabase.from("group_messages")
+      .select("*, profiles(username, avatar_initials)")
+      .eq("group_id", groupId)
+      .order("created_at", { ascending: true })
+      .limit(100)
+      .then(({ data }) => {
+        if (data) {
+          data.forEach(m => knownIds.current.add(m.id));
+          setMessages(data.map(m => ({
+            id: m.id,
+            uid: m.user_id,
+            username: m.profiles?.username || "?",
+            avatar: m.profiles?.avatar_initials || "?",
+            text: m.content,
+            ts: m.created_at,
+          })));
+        }
+        setLoading(false);
+      });
+
+    // Load member cars
+    if (g?.memberIds?.length) {
+      supabase.from("user_cars").select("user_id,year,make,model,trim")
+        .in("user_id", g.memberIds).eq("is_primary", true)
+        .then(({ data }) => {
+          if (!data) return;
+          const map = {};
+          data.forEach(c => { map[c.user_id] = `${c.year} ${c.make} ${c.model}${c.trim?" "+c.trim:""}`; });
+          setMemberCars(map);
+        });
+    }
+
+    // Subscribe to realtime
+    const channel = supabase.channel(`chat:${groupId}`)
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "group_messages",
+        filter: `group_id=eq.${groupId}`,
+      }, async (payload) => {
+        const row = payload.new;
+        if (knownIds.current.has(row.id)) return;
+        knownIds.current.add(row.id);
+        // Fetch sender profile if not already known
+        let username = "?", avatar = "?";
+        const known = allUsers.find(u => u.id === row.user_id);
+        if (known) { username = known.username; avatar = known.avatar; }
+        else if (row.user_id === myProfile.id) { username = myProfile.username; avatar = myProfile.avatar; }
+        else {
+          const { data: prof } = await supabase.from("profiles").select("username,avatar_initials").eq("id", row.user_id).single();
+          if (prof) { username = prof.username; avatar = prof.avatar_initials || "?"; }
+        }
+        setMessages(prev => [...prev, {
+          id: row.id, uid: row.user_id,
+          username, avatar,
+          text: row.content, ts: row.created_at,
+        }]);
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [groupId]);
+
+  useEffect(() => { endRef.current?.scrollIntoView({behavior:"smooth"}); }, [messages.length]);
+
+  const send = async () => {
+    const text = input.trim();
+    if (!text) return;
     setInput("");
+    await supabase.from("group_messages").insert({
+      group_id: groupId,
+      user_id: myProfile.id,
+      content: text,
+    });
   };
 
   if (!g) return null;
@@ -1179,40 +1310,12 @@ function ChatView({ groupId, groups, setGroups, onBack, openPlayer, myProfile, a
       <div className="pg-hdr" style={{paddingTop:0}}>
         <div className="pg-title">{g.name}</div>
         <div className="pg-sub">{g.type} · {g.memberIds.length} members</div>
-      </div>
-
-      {/* Voice */}
-      <div className="voice-card">
-        <div className="voice-status-row">
-          <div className={`voice-dot ${voiceOn?"on":""}`}/>
-          <span style={{fontSize:12,fontWeight:600,color:voiceOn?"var(--green)":"var(--muted)",letterSpacing:.5}}>
-            {voiceOn?"Voice Active":"Voice Channel"}
-          </span>
-        </div>
-        {voiceOn&&(
-          <div className="voice-users">
-            {members.slice(0,6).map(m=>(
-              <div key={m.id} className="voice-user">
-                <div className={`voice-av ${m.id===myProfile.id&&muted?"muted":""}`}>
-                  {m.avatar}
-                </div>
-                <div className="voice-name">@{m.username||m.avatar}</div>
-              </div>
-            ))}
-          </div>
-        )}
-        <div style={{display:"flex",gap:8}}>
-          <button className={`btn btn-sm ${voiceOn?"btn-red":"btn-green"}`} onClick={()=>setVoiceOn(!voiceOn)}>
-            {voiceOn?"Leave":"Join Voice"}
-          </button>
-          {voiceOn&&<button className={`btn btn-sm ${muted?"btn-orange":"btn-secondary"}`} onClick={()=>setMuted(!muted)}>
-            {muted?"🔇 Muted":"🎙 Live"}
-          </button>}
-        </div>
+        {g.desc&&<div style={{fontSize:12,color:"var(--muted)",marginTop:4}}>{g.desc}</div>}
+        {g.tags?.length>0&&<div className="tags" style={{marginTop:8}}>{g.tags.map(t=><span key={t} className="tag">{t}</span>)}</div>}
       </div>
 
       {/* Members */}
-      <div className="sec-lbl">Members</div>
+      <div className="sec-lbl">Members ({g.memberIds.length})</div>
       <div className="list-card" style={{margin:"0 16px 14px"}}>
         {members.map(m=>(
           <div key={m.id} className="list-item" onClick={()=>m.id!==myProfile.id&&openPlayer(m.id)}>
@@ -1220,9 +1323,9 @@ function ChatView({ groupId, groups, setGroups, onBack, openPlayer, myProfile, a
             <div className="list-item-info">
               <div className="list-item-title">
                 @{m.username||m.avatar}
-                {m.id===myProfile.id&&<span style={{fontSize:10,color:"var(--orange)",marginLeft:6,fontWeight:600}}>YOU</span>}
+                {m.id===myProfile.id&&<span style={{fontSize:10,color:"var(--accent)",marginLeft:6,fontWeight:600}}>YOU</span>}
               </div>
-              <div className="list-item-sub">{tw(m.wins)} wins</div>
+              {memberCars[m.id]&&<div className="list-item-sub" style={{fontFamily:"var(--font-mono)",fontSize:10}}>{memberCars[m.id]}</div>}
             </div>
             <TierBadge wins={tw(m.wins)} />
           </div>
@@ -1232,24 +1335,31 @@ function ChatView({ groupId, groups, setGroups, onBack, openPlayer, myProfile, a
       {/* Chat */}
       <div className="sec-lbl">Group Chat</div>
       <div className="chat-msgs">
-        {g.messages.length===0&&<div className="empty">No messages yet. Start the conversation.</div>}
-        {g.messages.map((msg,i)=>{
-          const sender = getU(msg.uid, allUsers, myProfile);
+        {loading&&<div className="empty">Loading messages…</div>}
+        {!loading&&messages.length===0&&<div className="empty">No messages yet. Start the conversation.</div>}
+        {messages.map((msg)=>{
           const mine = msg.uid===myProfile.id;
+          const car = memberCars[msg.uid];
           return (
-            <div key={i} className="msg-row">
-              <div className={`av s24 ${mine?"me":""}`}>{sender?.avatar}</div>
-              <div className={`msg-bubble ${mine?"mine":""}`}>
-                <div className="msg-who">@{sender?.username||"?"}</div>
-                <div className="msg-text">{msg.text}</div>
-                <div className="msg-time">{msg.time}</div>
+            <div key={msg.id} className={`msg-row ${mine?"mine":""}`}>
+              {!mine&&<div className="av s28">{msg.avatar}</div>}
+              <div>
+                <div className="msg-meta">
+                  {!mine&&<span className="msg-who">@{msg.username}</span>}
+                  {car&&<span className="msg-car">{car}</span>}
+                  <span style={{color:"var(--muted2)",fontSize:10}}>{fmt(msg.ts)}</span>
+                </div>
+                <div className={`msg-bubble ${mine?"mine":""}`}>
+                  <div className="msg-text">{msg.text}</div>
+                </div>
               </div>
+              {mine&&<div className="av s28 me">{msg.avatar||myProfile.avatar}</div>}
             </div>
           );
         })}
         <div ref={endRef}/>
       </div>
-      <div className="chat-inp-row">
+      <div className="chat-input-bar">
         <input className="chat-inp" value={input} onChange={e=>setInput(e.target.value)}
           onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Message…"/>
         <button className="btn btn-primary" style={{borderRadius:12,padding:"12px 16px"}} onClick={send}>Send</button>
