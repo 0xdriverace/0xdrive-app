@@ -34,6 +34,15 @@ const RACE_TIMES = [
   {key:"half_mile",    label:"½ Mile",unit:"sec"},
 ];
 
+const LEADERBOARD_CATS = [
+  { key:"0-60",         label:"0-60",   sub:"mph" },
+  { key:"0-120",        label:"0-120",  sub:"mph" },
+  { key:"quarter_mile", label:"¼ Mile", sub:"sec" },
+  { key:"half_mile",    label:"½ Mile", sub:"sec" },
+];
+
+const CAR_CLASSES = ["All","JDM","Euro","American","Muscle","Truck","Other"];
+
 const BLANK_PROFILE = {
   id: null,
   username: "",
@@ -355,6 +364,19 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);min-hei
 .seg{display:flex;background:var(--s3);border-radius:var(--radius-md);border:1px solid var(--border);overflow:hidden;margin-bottom:10px}
 .seg-opt{flex:1;padding:9px;text-align:center;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer;transition:all .12s;border:none;background:none;font-family:var(--font-sans)}
 .seg-opt.on{background:var(--blue);color:#fff}
+
+/* LEADERBOARD */
+.lb-cat-tabs{display:grid;grid-template-columns:repeat(4,1fr);margin:0 16px 12px;background:var(--s2);border-radius:var(--radius-md);border:1px solid var(--border);overflow:hidden}
+.lb-cat-tab{font-family:var(--font-sans);font-size:11px;font-weight:600;padding:11px 4px;text-align:center;cursor:pointer;border:none;background:transparent;color:var(--muted);transition:all .12s;letter-spacing:.02em;line-height:1.2}
+.lb-cat-tab.on{background:var(--blue);color:#fff}
+.lb-cat-tab:not(:last-child){border-right:1px solid var(--border)}
+.lb-cat-tab-sub{font-size:9px;font-weight:400;display:block;opacity:.7;margin-top:2px}
+.car-class-badge{display:inline-flex;align-items:center;font-size:9px;font-weight:600;letter-spacing:.5px;padding:2px 7px;border-radius:4px;background:rgba(0,102,255,.1);color:var(--blue);border:1px solid rgba(0,102,255,.2);text-transform:uppercase;white-space:nowrap}
+.lb-time-val{font-family:var(--font-mono);font-size:19px;font-weight:700;line-height:1;letter-spacing:-0.5px;font-variant-numeric:tabular-nums}
+.lb-time-unit{font-size:11px;font-weight:400;color:var(--muted)}
+.my-best-bar{margin:0 16px 8px;padding:11px 14px;background:rgba(0,102,255,.06);border:1px solid rgba(0,102,255,.2);border-radius:var(--radius-md);display:flex;align-items:center;justify-content:space-between}
+.proof-link{font-size:10px;color:var(--blue);text-decoration:none;letter-spacing:.01em;display:inline-block;margin-top:3px}
+.proof-link:hover{text-decoration:underline}
 
 /* CAR SHOWCASE */
 .car-showcase{margin:0 16px 10px;border-radius:var(--radius-lg);overflow:hidden;border:1px solid var(--border2);background:var(--s2)}
@@ -763,7 +785,7 @@ export default function App() {
               <MapView groups={groups} openPlayer={setPlayerView}
                 myProfile={myProfile} allUsers={allUsers} />
             ) : tab==="Ranks" ? (
-              <RanksView openPlayer={setPlayerView} myProfile={myProfile} allUsers={allUsers} />
+              <RanksView openPlayer={setPlayerView} myProfile={myProfile} allUsers={allUsers} myCar={myCar} />
             ) : (
               <ProfileView myProfile={myProfile} friends={friends} groups={groups}
                 openPlayer={setPlayerView} onEdit={()=>setEditingProfile(true)}
@@ -1343,89 +1365,277 @@ function MapView({ groups, openPlayer, myProfile, allUsers }) {
 }
 
 /* ─── RANKS VIEW ─────────────────────────────────────────────────── */
-function RanksView({ openPlayer, myProfile, allUsers }) {
-  const [period, setPeriod] = useState("All Time");
-  const [fmt, setFmt] = useState("Total");
-  const [showTimes, setShowTimes] = useState(false);
+function RanksView({ openPlayer, myProfile, myCar }) {
+  const [cat, setCat]           = useState("0-60");
+  const [classFilter, setClass] = useState("All");
+  const [entries, setEntries]   = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [loadKey, setLoadKey]   = useState(0);
+  const [submitOpen, setSubmitOpen] = useState(false);
 
-  const getW = p => {
-    if (fmt==="Total") return tw(p.wins||{});
-    const k={H2H:"h2h",Group:"group",Trial:"trial",Drag:"drag"}[fmt]||"h2h";
-    return (p.wins||{})[k]??0;
-  };
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
 
-  const allForRanks = myProfile.id ? [myProfile, ...allUsers] : allUsers;
-  const sorted = allForRanks.map(p=>({p,w:getW(p),isMe:p.id===myProfile.id})).sort((a,b)=>b.w-a.w);
+    const run = async () => {
+      let q = supabase
+        .from("race_times")
+        .select("*, profiles(username, avatar_initials), user_cars(year, make, model, trim)")
+        .eq("category", cat)
+        .order("time_seconds", { ascending: true })
+        .limit(300);
+      if (classFilter !== "All") q = q.eq("car_class", classFilter);
+
+      const { data } = await q;
+      if (cancelled || !data) return;
+
+      // Best time per user
+      const best = {};
+      data.forEach(e => {
+        if (!best[e.user_id] || e.time_seconds < best[e.user_id].time_seconds)
+          best[e.user_id] = e;
+      });
+      setEntries(Object.values(best).sort((a,b) => a.time_seconds - b.time_seconds));
+      setLoading(false);
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [cat, classFilter, loadKey]);
+
+  const myIdx   = entries.findIndex(e => e.user_id === myProfile.id);
+  const myEntry = myIdx >= 0 ? entries[myIdx] : null;
+
+  const RANK_COLOR = (i) =>
+    i === 0 ? "#f59e0b" : i === 1 ? "#a0a0a0" : i === 2 ? "#cd7f32" : "var(--muted2)";
 
   return (
     <div>
-      <div className="pg-hdr">
-        <div className="pg-title">Rankings</div>
-        <div className="pg-sub">Global leaderboard · all users</div>
-      </div>
-
-      {/* Tier legend */}
-      <div style={{display:"flex",gap:6,padding:"0 16px",marginBottom:14,flexWrap:"wrap"}}>
-        {TIERS.slice(1).map(t=>(
-          <span key={t.name} style={{fontSize:10,fontWeight:600,color:t.color,background:"var(--s2)",border:`1px solid ${t.color}33`,padding:"4px 10px",borderRadius:20}}>
-            {t.icon} {t.name} ≥{t.min}W
-          </span>
-        ))}
-      </div>
-
-      <div className="pills">
-        {["All Time","Monthly","Weekly"].map(v=>(
-          <button key={v} className={`pill ${period===v?"on":""}`} onClick={()=>setPeriod(v)}>{v}</button>
-        ))}
-      </div>
-      <div className="pills">
-        {["Total","H2H","Group","Trial","Drag"].map(v=>(
-          <button key={v} className={`pill ${fmt===v?"on":""}`} onClick={()=>setFmt(v)}>{v}</button>
-        ))}
-      </div>
-
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",marginBottom:10}}>
-        <span style={{fontSize:11,color:"var(--muted)",fontWeight:600,letterSpacing:1,textTransform:"uppercase"}}>Race Times</span>
-        <button className={`pill ${showTimes?"on":""}`} style={{fontSize:11,padding:"4px 12px"}} onClick={()=>setShowTimes(!showTimes)}>
-          {showTimes?"Hide":"Show"}
+      {/* Header */}
+      <div className="pg-hdr" style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
+        <div>
+          <div className="pg-title">Leaderboard</div>
+          <div className="pg-sub">Fastest times · all classes</div>
+        </div>
+        <button className="btn btn-primary btn-sm" style={{marginTop:4}} onClick={()=>setSubmitOpen(true)}>
+          + Submit
         </button>
       </div>
 
-      {sorted.length===0&&<div className="empty">No users yet.</div>}
+      {/* Category tabs */}
+      <div className="lb-cat-tabs">
+        {LEADERBOARD_CATS.map(c=>(
+          <button key={c.key} className={`lb-cat-tab ${cat===c.key?"on":""}`} onClick={()=>setCat(c.key)}>
+            {c.label}
+            <span className="lb-cat-tab-sub">{c.sub}</span>
+          </button>
+        ))}
+      </div>
 
-      {sorted.map((entry,i)=>{
-        const tier = getTier(tw(entry.p.wins||{}));
-        const hasTimes = entry.p.times&&Object.values(entry.p.times).some(v=>v);
+      {/* Class filter */}
+      <div className="pills">
+        {CAR_CLASSES.map(cls=>(
+          <button key={cls} className={`pill ${classFilter===cls?"on":""}`} onClick={()=>setClass(cls)}>
+            {cls}
+          </button>
+        ))}
+      </div>
+
+      {/* My best (if outside top visible) */}
+      {myEntry && myIdx > 9 && (
+        <div className="my-best-bar">
+          <div>
+            <div style={{fontSize:10,color:"var(--blue)",fontWeight:600,letterSpacing:1.2,textTransform:"uppercase",marginBottom:2}}>Your Best</div>
+            <div style={{fontSize:12,color:"var(--muted)"}}>
+              #{myIdx+1} · {myEntry.car_class && <span className="car-class-badge" style={{marginRight:4}}>{myEntry.car_class}</span>}
+              {[myEntry.user_cars?.year,myEntry.user_cars?.make,myEntry.user_cars?.model].filter(Boolean).join(" ")||"No car"}
+            </div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <span className="lb-time-val" style={{color:"var(--blue)"}}>{Number(myEntry.time_seconds).toFixed(3)}</span>
+            <span className="lb-time-unit">s</span>
+          </div>
+        </div>
+      )}
+
+      {loading && (
+        <div style={{padding:"32px 20px",textAlign:"center",color:"var(--muted2)",fontSize:12}}>
+          Loading…
+        </div>
+      )}
+
+      {!loading && entries.length===0 && (
+        <div style={{padding:"40px 20px",textAlign:"center"}}>
+          <div style={{fontSize:13,color:"var(--muted)",marginBottom:14}}>
+            No times submitted yet for this category.<br/>Be the first on the board.
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={()=>setSubmitOpen(true)}>+ Submit Time</button>
+        </div>
+      )}
+
+      {!loading && entries.map((entry,i)=>{
+        const isMe   = entry.user_id === myProfile.id;
+        const car    = entry.user_cars;
+        const prof   = entry.profiles;
+        const carStr = car ? [car.year,car.make,car.model].filter(Boolean).join(" ") : "";
+        const rc     = RANK_COLOR(i);
         return (
-          <div key={entry.p.id} className={`lb-row ${entry.isMe?"mine":""}`} onClick={()=>openPlayer(entry.p.id)}>
-            <div className={`lb-rank ${i<3?"top":""}`}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":i+1}</div>
-            <div className={`av s32 ${entry.isMe?"me":""}`}>{entry.p.avatar}</div>
+          <div key={entry.id} className={`lb-row ${isMe?"mine":""}`} onClick={()=>openPlayer(entry.user_id)}>
+            {/* Rank */}
+            <div className="lb-rank" style={{color:rc,fontSize:i<3?15:12,width:20}}>
+              {i+1}
+            </div>
+            {/* Avatar */}
+            <div className={`av s32 ${isMe?"me":""}`}>{prof?.avatar_initials||"?"}</div>
+            {/* Info */}
             <div className="lb-info">
               <div className="lb-name">
-                <span style={{color:"var(--orange)",fontWeight:600}}>@{entry.p.username}</span>
-                {entry.isMe&&<span className="you-tag">YOU</span>}
-                <span style={{fontSize:10,color:tier.color,fontWeight:600}}>{tier.name}</span>
+                <span style={{color:"var(--blue)",fontWeight:600}}>@{prof?.username||"?"}</span>
+                {isMe&&<span className="you-tag">YOU</span>}
+                {entry.car_class&&<span className="car-class-badge">{entry.car_class}</span>}
               </div>
-              {entry.p.showRealName&&<div style={{fontSize:11,color:"var(--muted)"}}>{entry.p.displayName}</div>}
-              {(entry.p.car||entry.p.city)&&<div className="lb-sub">{[entry.p.car,entry.p.city].filter(Boolean).join(" · ")}</div>}
-              {showTimes&&hasTimes&&(
-                <div className="lb-times-row">
-                  {RACE_TIMES.map(t=>(
-                    <div key={t.key} className="lb-time">
-                      <div className="lb-time-val">{entry.p.times[t.key]||"—"}</div>
-                      <div className="lb-time-lbl">{t.label}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {carStr&&<div className="lb-sub">{carStr}{car?.trim?` · ${car.trim}`:""}</div>}
             </div>
-            <div className="lb-wins">
-              <div className="lb-wins-n" style={{color:i<3?tier.color:"var(--text)"}}>{entry.w}</div>
-              <div className="lb-wins-l">wins</div>
+            {/* Time + proof */}
+            <div style={{textAlign:"right",flexShrink:0}}>
+              <div>
+                <span className="lb-time-val" style={{color:rc}}>{Number(entry.time_seconds).toFixed(3)}</span>
+                <span className="lb-time-unit">s</span>
+              </div>
+              {entry.proof_url&&(
+                <a className="proof-link" href={entry.proof_url} target="_blank"
+                  rel="noopener noreferrer" onClick={e=>e.stopPropagation()}>
+                  proof ↗
+                </a>
+              )}
             </div>
           </div>
         );
       })}
+
+      {submitOpen&&(
+        <SubmitTimeModal
+          myProfile={myProfile}
+          myCar={myCar}
+          initialCat={cat}
+          onClose={()=>setSubmitOpen(false)}
+          onSubmitted={()=>{ setSubmitOpen(false); setLoadKey(k=>k+1); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─── SUBMIT TIME MODAL ──────────────────────────────────────────── */
+function SubmitTimeModal({ myProfile, myCar, initialCat, onClose, onSubmitted }) {
+  const [cat,        setCat]        = useState(initialCat);
+  const [timeVal,    setTimeVal]    = useState("");
+  const [carClass,   setCarClass]   = useState("");
+  const [proofUrl,   setProofUrl]   = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error,      setError]      = useState("");
+
+  const hasCar  = myCar.make && myCar.model;
+  const carLabel = hasCar
+    ? [myCar.year, myCar.make, myCar.model].filter(Boolean).join(" ")
+    : null;
+
+  const parsed   = parseFloat(timeVal);
+  const timeOk   = timeVal !== "" && !isNaN(parsed) && parsed > 0;
+  const canSubmit = timeOk && carClass !== "" && myProfile.id;
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      const { error: err } = await supabase.from("race_times").insert({
+        user_id:      myProfile.id,
+        car_id:       myCar.id || null,
+        category:     cat,
+        time_seconds: parsed,
+        car_class:    carClass,
+        proof_url:    proofUrl.trim() || null,
+        verified:     false,
+      });
+      if (err) throw err;
+      onSubmitted();
+    } catch (e) {
+      setError(e.message || "Submission failed. Try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="modal-sheet fade">
+        <div className="modal-handle"/>
+        <div className="modal-title">Submit Time</div>
+        <div className="modal-sub">Your best run for the leaderboard</div>
+
+        {/* Category */}
+        <label className="inp-label" style={{marginBottom:8}}>Category</label>
+        <div className="lb-cat-tabs" style={{marginBottom:16}}>
+          {LEADERBOARD_CATS.map(c=>(
+            <button key={c.key} className={`lb-cat-tab ${cat===c.key?"on":""}`} onClick={()=>setCat(c.key)}>
+              {c.label}
+              <span className="lb-cat-tab-sub">{c.sub}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Car */}
+        <label className="inp-label" style={{marginBottom:6}}>Car</label>
+        <div style={{background:"var(--s3)",border:"1px solid var(--border)",borderRadius:8,padding:"11px 14px",marginBottom:14}}>
+          {hasCar
+            ? <span style={{fontSize:13,color:"var(--text)",fontWeight:500}}>{carLabel}</span>
+            : <span style={{fontSize:12,color:"var(--muted2)"}}>No car on profile — add one in Edit Profile</span>
+          }
+        </div>
+
+        {/* Car class */}
+        <label className="inp-label" style={{marginBottom:8}}>Class</label>
+        <div className="pills" style={{padding:0,flexWrap:"wrap",marginBottom:16,gap:6}}>
+          {CAR_CLASSES.filter(c=>c!=="All").map(cls=>(
+            <button key={cls} className={`pill ${carClass===cls?"on":""}`} onClick={()=>setCarClass(cls)}>
+              {cls}
+            </button>
+          ))}
+        </div>
+
+        {/* Time */}
+        <label className="inp-label" style={{marginBottom:6}}>Time (seconds)</label>
+        <input className="inp" type="number" step="0.001" min="0.001"
+          style={{fontFamily:"var(--font-mono)",fontSize:28,fontWeight:700,letterSpacing:"-1px",
+                  padding:"12px 16px",marginBottom:4,textAlign:"center"}}
+          placeholder="0.000"
+          value={timeVal} onChange={e=>setTimeVal(e.target.value)}/>
+        <div style={{fontSize:10,color:"var(--muted2)",marginBottom:14,textAlign:"center",letterSpacing:.3}}>
+          Enter to 3 decimal places, e.g. 3.820
+        </div>
+
+        {/* Proof */}
+        <label className="inp-label" style={{marginBottom:6}}>
+          Proof URL&nbsp;<span style={{color:"var(--muted2)",fontWeight:400,textTransform:"none",letterSpacing:0,fontSize:10}}>optional</span>
+        </label>
+        <input className="inp" type="url" placeholder="https://youtube.com/watch?v=..."
+          value={proofUrl} onChange={e=>setProofUrl(e.target.value)} style={{marginBottom:16}}/>
+
+        {error&&(
+          <div style={{marginBottom:12,padding:"10px 14px",background:"rgba(255,59,48,.1)",
+            border:"1px solid rgba(255,59,48,.2)",borderRadius:8,fontSize:12,color:"var(--red)"}}>
+            {error}
+          </div>
+        )}
+
+        <button className="btn btn-primary btn-full" style={{borderRadius:10,padding:"14px",marginBottom:8}}
+          disabled={!canSubmit||submitting} onClick={handleSubmit}>
+          {submitting ? "Submitting…" : "Submit to Leaderboard"}
+        </button>
+        <button className="btn btn-secondary btn-full" style={{borderRadius:10}} onClick={onClose}>
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
