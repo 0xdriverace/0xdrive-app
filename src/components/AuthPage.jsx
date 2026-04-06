@@ -34,8 +34,8 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min
 .auth-divider{text-align:center;font-size:12px;color:var(--muted);margin:20px 0 0}
 `;
 
-export default function AuthPage() {
-  const [mode, setMode] = useState("login");
+export default function AuthPage({ initialMode = "login" }) {
+  const [mode, setMode] = useState(initialMode);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");

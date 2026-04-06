@@ -3,6 +3,7 @@ import { supabase } from "./lib/supabase.js";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import AuthPage from "./components/AuthPage.jsx";
+import LandingPage from "./components/LandingPage.jsx";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -613,6 +614,9 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
+  const [showAuth, setShowAuth] = useState(false);
+  const [authMode, setAuthMode] = useState("login");
+
   const [tab, setTab] = useState("Groups");
   const [groups, setGroups] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
@@ -739,7 +743,15 @@ export default function App() {
     );
   }
 
-  if (!session) return <AuthPage />;
+  if (!session) {
+    if (!showAuth) return (
+      <LandingPage
+        onSignUp={() => { setAuthMode("signup"); setShowAuth(true); }}
+        onLogin={() => { setAuthMode("login"); setShowAuth(true); }}
+      />
+    );
+    return <AuthPage initialMode={authMode} />;
+  }
 
   const myId = session.user.id;
   const isFriend = id => friends.includes(id);
