@@ -59,6 +59,7 @@ const BLANK_PROFILE = {
   instagram: "",
   lat: null,
   lng: null,
+  mapVisible: true,
 };
 
 const BLANK_CAR = {
@@ -101,6 +102,7 @@ function profileFromRow(row) {
     socials: { instagram: row.instagram || "", twitter: "", youtube: "" },
     lat: row.lat ?? null,
     lng: row.lng ?? null,
+    mapVisible: row.map_visible ?? true,
   };
 }
 
@@ -270,6 +272,19 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);min-hei
 .mapboxgl-ctrl-group button{background:transparent!important;border:none!important}
 .mapboxgl-ctrl-group button:hover{background:var(--s3)!important}
 .mapboxgl-ctrl-icon{filter:invert(1)}
+.map-controls{display:flex;align-items:center;gap:8px;padding:0 16px 10px;flex-wrap:wrap}
+.map-loc-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--radius-md);background:var(--accent);color:#fff;font-size:12px;font-weight:600;border:none;cursor:pointer;transition:background var(--transition-fast);flex-shrink:0}
+.map-loc-btn:hover{background:var(--accent-hover)}
+.map-loc-btn:disabled{opacity:.5;cursor:default}
+.map-vis-toggle{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);font-weight:500;cursor:pointer;background:var(--s2);border:1px solid var(--border);border-radius:var(--radius-md);padding:7px 12px;flex-shrink:0}
+.map-vis-toggle .tog{width:32px;height:18px;border-radius:9px;background:var(--s3);border:1px solid var(--border2);position:relative;transition:background .2s;flex-shrink:0}
+.map-vis-toggle .tog.on{background:var(--accent);border-color:var(--accent)}
+.map-vis-toggle .tog::after{content:"";position:absolute;width:12px;height:12px;border-radius:50%;background:#fff;top:2px;left:2px;transition:left .2s}
+.map-vis-toggle .tog.on::after{left:16px}
+.map-loc-status{font-size:11px;color:var(--muted);margin-left:2px}
+.map-group-legend{display:flex;align-items:center;gap:12px;padding:0 16px 8px;flex-wrap:wrap}
+.map-legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)}
+.map-legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 
 /* GROUP CARDS — enhanced */
 .gc-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
@@ -664,6 +679,8 @@ export default function App() {
           lastActive: "recently",
           messages: [],
           pendingRequests: [],
+          lat: g.lat ?? null,
+          lng: g.lng ?? null,
         })));
       }
 
@@ -822,7 +839,7 @@ export default function App() {
                 allUsers={allUsers} myProfile={myProfile} />
             ) : tab==="Map" ? (
               <MapView groups={groups} openPlayer={setPlayerView}
-                myProfile={myProfile} allUsers={allUsers} />
+                myProfile={myProfile} setMyProfile={setMyProfile} allUsers={allUsers} />
             ) : tab==="Ranks" ? (
               <RanksView openPlayer={setPlayerView} myProfile={myProfile} allUsers={allUsers} myCar={myCar} />
             ) : (
@@ -1369,30 +1386,62 @@ function ChatView({ groupId, groups, onBack, openPlayer, myProfile, allUsers }) 
 }
 
 /* ─── MAP VIEW ───────────────────────────────────────────────────── */
-function MapView({ groups, openPlayer, myProfile, allUsers }) {
+function MapView({ groups, openPlayer, myProfile, setMyProfile, allUsers }) {
   const mapContainer = useRef(null);
-  const mapRef = useRef(null);
-  const markersRef = useRef([]);
-  const [filter, setFilter] = useState("All");
+  const mapRef       = useRef(null);
+  const userMarkersRef  = useRef([]);
+  const groupMarkersRef = useRef([]);
 
-  const myId = myProfile.id;
-  const myGroups = groups.filter(g=>g.memberIds.includes(myId));
+  const [filter, setFilter]       = useState("All");
+  const [memberCars, setMemberCars] = useState({});   // userId -> "year make model"
+  const [locating, setLocating]   = useState(false);
+  const [locErr, setLocErr]       = useState(null);
+  const [mapVisible, setMapVisible] = useState(myProfile.mapVisible ?? true);
+
+  const myId     = myProfile.id;
+  const myGroups = groups.filter(g => g.memberIds.includes(myId));
+
+  // Which users are shown (exclude hidden, filter by group if selected)
   const allWithMe = myProfile.lat != null ? [myProfile, ...allUsers] : allUsers;
-
   const visibleUsers = allWithMe.filter(p => {
     if (p.lat == null || p.lng == null) return false;
-    if (filter==="All") return true;
-    return groups.find(g=>g.id===filter)?.memberIds.includes(p.id);
+    if (!p.mapVisible && p.id !== myId) return false;   // respect others' privacy
+    if (filter !== "All" && !groups.find(g => g.id === filter)?.memberIds.includes(p.id)) return false;
+    return true;
   });
 
-  // Init map once
+  // Group pins to show (groups that have a location set)
+  const visibleGroups = (filter === "All" ? myGroups : myGroups.filter(g => g.id === filter))
+    .filter(g => g.lat != null && g.lng != null);
+
+  // Load primary cars for all known users once on mount
+  useEffect(() => {
+    const allIds = allUsers.map(u => u.id);
+    if (myId) allIds.push(myId);
+    if (!allIds.length) return;
+    supabase
+      .from("user_cars")
+      .select("user_id, year, make, model, trim")
+      .in("user_id", allIds)
+      .eq("is_primary", true)
+      .then(({ data }) => {
+        if (!data) return;
+        const map = {};
+        data.forEach(c => {
+          map[c.user_id] = `${c.year} ${c.make} ${c.model}${c.trim ? " " + c.trim : ""}`;
+        });
+        setMemberCars(map);
+      });
+  }, [myId, allUsers]);
+
+  // Init Mapbox once
   useEffect(() => {
     if (mapRef.current || !mapContainer.current) return;
     mapboxgl.accessToken = MAPBOX_TOKEN;
     mapRef.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: "mapbox://styles/mapbox/dark-v11",
-      center: [-122.6765, 45.5231],
+      center: [-122.67, 45.52],
       zoom: 11,
     });
     mapRef.current.addControl(new mapboxgl.NavigationControl(), "top-right");
@@ -1401,71 +1450,186 @@ function MapView({ groups, openPlayer, myProfile, allUsers }) {
     };
   }, []);
 
-  // Update markers when visible users or filter changes
+  // Sync user markers
   useEffect(() => {
     if (!mapRef.current) return;
-    markersRef.current.forEach(m => m.remove());
-    markersRef.current = [];
+    userMarkersRef.current.forEach(m => m.remove());
+    userMarkersRef.current = [];
 
     visibleUsers.forEach(p => {
       const isMe = p.id === myId;
+      const car  = memberCars[p.id];
+
       const el = document.createElement("div");
       el.style.cssText = [
-        `width:${isMe?14:10}px`,
-        `height:${isMe?14:10}px`,
+        `width:${isMe ? 16 : 11}px`,
+        `height:${isMe ? 16 : 11}px`,
         "border-radius:50%",
-        `background:${isMe?"#0066ff":"#ffffff"}`,
-        `border:2px solid ${isMe?"#0066ff":"#333"}`,
+        `background:${isMe ? "#0066ff" : "#ffffff"}`,
+        `border:2px solid ${isMe ? "#0066ff" : "#2a2a2a"}`,
         "cursor:pointer",
-        `box-shadow:${isMe?"0 0 10px rgba(0,102,255,0.5)":"none"}`,
+        "transition:transform .15s",
+        `box-shadow:${isMe ? "0 0 12px rgba(0,102,255,0.6)" : "0 1px 4px rgba(0,0,0,.8)"}`,
       ].join(";");
+      el.onmouseenter = () => { el.style.transform = "scale(1.4)"; };
+      el.onmouseleave = () => { el.style.transform = "scale(1)"; };
       el.addEventListener("click", () => openPlayer(p.id));
 
-      const popup = new mapboxgl.Popup({ offset:14, closeButton:false, closeOnClick:false })
-        .setHTML(`<span style="font-size:12px;font-weight:600">@${p.username}</span>${p.city?`<br><span style="font-size:10px;opacity:.7">${p.city}</span>`:""}`);
+      const popupHtml = `
+        <div style="min-width:120px">
+          <div style="font-size:12px;font-weight:700;color:#0066ff;margin-bottom:${car ? 3 : 0}px">@${p.username}${isMe ? " <span style='color:#888;font-size:10px'>(you)</span>" : ""}</div>
+          ${car ? `<div style="font-size:11px;color:#ccc;font-family:'JetBrains Mono',monospace">${car}</div>` : ""}
+        </div>`;
+
+      const popup = new mapboxgl.Popup({ offset: 16, closeButton: false, closeOnClick: false })
+        .setHTML(popupHtml);
 
       const marker = new mapboxgl.Marker({ element: el })
         .setLngLat([p.lng, p.lat])
         .setPopup(popup)
         .addTo(mapRef.current);
 
-      markersRef.current.push(marker);
+      userMarkersRef.current.push(marker);
     });
-  }, [visibleUsers, myId]);
+  }, [visibleUsers, memberCars, myId]);
+
+  // Sync group markers
+  useEffect(() => {
+    if (!mapRef.current) return;
+    groupMarkersRef.current.forEach(m => m.remove());
+    groupMarkersRef.current = [];
+
+    visibleGroups.forEach(g => {
+      const el = document.createElement("div");
+      el.style.cssText = [
+        "width:13px", "height:13px", "border-radius:3px",
+        "background:#00c060",
+        "border:2px solid #007a3d",
+        "cursor:pointer",
+        "box-shadow:0 0 8px rgba(0,192,96,0.4)",
+        "transform:rotate(45deg)",
+        "transition:transform .15s",
+      ].join(";");
+      el.onmouseenter = () => { el.style.transform = "rotate(45deg) scale(1.4)"; };
+      el.onmouseleave = () => { el.style.transform = "rotate(45deg) scale(1)"; };
+
+      const popupHtml = `
+        <div style="min-width:110px">
+          <div style="font-size:11px;font-weight:700;color:#00c060;margin-bottom:3px">${g.name}</div>
+          <div style="font-size:10px;color:#888">${g.memberIds.length} member${g.memberIds.length !== 1 ? "s" : ""}</div>
+          ${g.tags?.length ? `<div style="margin-top:4px;display:flex;gap:3px;flex-wrap:wrap">${g.tags.map(t=>`<span style="font-size:9px;background:#1c1c1c;border:1px solid #2a2a2a;border-radius:3px;padding:1px 5px;color:#aaa">${t}</span>`).join("")}</div>` : ""}
+        </div>`;
+
+      const popup = new mapboxgl.Popup({ offset: 16, closeButton: false, closeOnClick: false })
+        .setHTML(popupHtml);
+
+      const marker = new mapboxgl.Marker({ element: el })
+        .setLngLat([g.lng, g.lat])
+        .setPopup(popup)
+        .addTo(mapRef.current);
+
+      groupMarkersRef.current.push(marker);
+    });
+  }, [visibleGroups]);
+
+  const handleSetLocation = () => {
+    if (!navigator.geolocation) { setLocErr("Geolocation not supported"); return; }
+    setLocating(true);
+    setLocErr(null);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords;
+        await supabase.from("profiles").update({ lat, lng }).eq("id", myId);
+        setMyProfile(p => ({ ...p, lat, lng }));
+        if (mapRef.current) mapRef.current.flyTo({ center: [lng, lat], zoom: 13 });
+        setLocating(false);
+      },
+      (err) => {
+        setLocErr("Location access denied");
+        setLocating(false);
+        console.warn("Geolocation error:", err);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const handleToggleVisible = async () => {
+    const next = !mapVisible;
+    setMapVisible(next);
+    setMyProfile(p => ({ ...p, mapVisible: next }));
+    await supabase.from("profiles").update({ map_visible: next }).eq("id", myId);
+  };
 
   return (
     <div>
       <div className="pg-hdr">
         <div className="pg-title">Live Map</div>
-        <div className="pg-sub">Portland metro · Group members</div>
+        <div className="pg-sub">Portland metro · {visibleUsers.length} visible</div>
       </div>
 
+      {/* Filter pills */}
       <div className="pills">
-        <button className={`pill ${filter==="All"?"on":""}`} onClick={()=>setFilter("All")}>All</button>
-        {myGroups.map(g=>(
-          <button key={g.id} className={`pill ${filter===g.id?"on":""}`} onClick={()=>setFilter(g.id)}>
-            {g.name.split(" ").slice(0,2).join(" ")}
+        <button className={`pill ${filter === "All" ? "on" : ""}`} onClick={() => setFilter("All")}>All</button>
+        {myGroups.map(g => (
+          <button key={g.id} className={`pill ${filter === g.id ? "on" : ""}`} onClick={() => setFilter(g.id)}>
+            {g.name.split(" ").slice(0, 2).join(" ")}
           </button>
         ))}
       </div>
 
+      {/* Controls row */}
+      <div className="map-controls">
+        <button className="map-loc-btn" onClick={handleSetLocation} disabled={locating}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/>
+            <line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
+          </svg>
+          {locating ? "Locating…" : myProfile.lat != null ? "Update Location" : "Set My Location"}
+        </button>
+        <div className="map-vis-toggle" onClick={handleToggleVisible}>
+          <div className={`tog ${mapVisible ? "on" : ""}`} />
+          <span>{mapVisible ? "Visible on map" : "Hidden from map"}</span>
+        </div>
+        {locErr && <span className="map-loc-status" style={{color:"var(--red)"}}>{locErr}</span>}
+        {!locErr && myProfile.lat != null && <span className="map-loc-status">📍 Location set</span>}
+      </div>
+
+      {/* Map */}
       <div className="map-wrap">
         <div ref={mapContainer} style={{width:"100%",height:"100%"}} />
       </div>
 
-      <div className="sec-lbl">{visibleUsers.length} {visibleUsers.length===1?"User":"Users"} on Map</div>
-      {visibleUsers.length===0&&<div className="empty">No members with location data.</div>}
-      {visibleUsers.map(p=>{
-        const isMe = p.id===myId;
+      {/* Legend */}
+      <div className="map-group-legend">
+        <div className="map-legend-item">
+          <div className="map-legend-dot" style={{background:"#0066ff",boxShadow:"0 0 6px rgba(0,102,255,.5)"}}/>
+          <span>You</span>
+        </div>
+        <div className="map-legend-item">
+          <div className="map-legend-dot" style={{background:"#ffffff",border:"1px solid #444"}}/>
+          <span>Members</span>
+        </div>
+        <div className="map-legend-item">
+          <div className="map-legend-dot" style={{width:9,height:9,background:"#00c060",borderRadius:2,transform:"rotate(45deg)",boxShadow:"0 0 5px rgba(0,192,96,.4)"}}/>
+          <span>Groups</span>
+        </div>
+      </div>
+
+      {/* Member list */}
+      <div className="sec-lbl">{visibleUsers.length} {visibleUsers.length === 1 ? "Member" : "Members"} on Map</div>
+      {visibleUsers.length === 0 && <div className="empty">No members with location data.</div>}
+      {visibleUsers.map(p => {
+        const isMe = p.id === myId;
+        const car  = memberCars[p.id];
         return (
-          <div key={p.id} className="user-row" onClick={()=>openPlayer(p.id)}>
-            <div style={{width:8,height:8,borderRadius:"50%",background:isMe?"#0066ff":"#444",flexShrink:0}}/>
+          <div key={p.id} className="user-row" onClick={() => openPlayer(p.id)}>
+            <div style={{width:9,height:9,borderRadius:"50%",background:isMe?"#0066ff":"#555",flexShrink:0,boxShadow:isMe?"0 0 6px rgba(0,102,255,.5)":"none"}}/>
             <div style={{flex:1,minWidth:0}}>
               <div className="user-name">
                 @{p.username}
-                {isMe&&<span style={{fontSize:10,color:"var(--orange)",marginLeft:6}}>YOU</span>}
+                {isMe && <span style={{fontSize:10,color:"var(--blue)",marginLeft:6}}>YOU</span>}
               </div>
-              {p.city&&<div className="user-car">{p.city}</div>}
+              {car && <div className="user-car" style={{fontFamily:"var(--font-mono)",fontSize:10}}>{car}</div>}
             </div>
           </div>
         );
