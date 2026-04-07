@@ -145,7 +145,7 @@ export default function AuthPage({ initialMode = "login" }) {
       <div className="auth-wrap">
         <div className="auth-logo">
           <div className="auth-logo-mark">0X<span>RACE</span></div>
-          <div className="auth-logo-sub">Powered by 0xDrive</div>
+          <div className="auth-logo-sub">Powered by 0xotics</div>
         </div>
 
         <div className="auth-tabs">

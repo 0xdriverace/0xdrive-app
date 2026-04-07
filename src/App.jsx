@@ -797,7 +797,7 @@ export default function App() {
         <aside className="sidebar">
           <div className="sidebar-top">
             <div className="sidebar-logo-mark">0X<span>RACE</span></div>
-            <div className="sidebar-logo-sub">Powered by 0xDrive</div>
+            <div className="sidebar-logo-sub">Powered by 0xotics</div>
             <div className="sidebar-profile">
               <div className="av s32 me">{myProfile.avatar}</div>
               <div className="sidebar-profile-info">
@@ -896,7 +896,7 @@ function Header({ myProfile, onLogout }) {
       <div className="logo-wrap">
         <div style={{flex:1}}>
           <div className="logo-mark">0X<span>RACE</span></div>
-          <div className="logo-sub">Powered by 0xDrive</div>
+          <div className="logo-sub">Powered by 0xotics</div>
         </div>
         <button
           className="btn btn-secondary btn-sm"
