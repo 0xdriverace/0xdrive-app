@@ -8,14 +8,16 @@ const AUTH_CSS = `
   --bg:#0a0a0a;--s1:#141414;--s2:#1a1a1a;--s3:#222222;
   --border:#2a2a2a;--border2:#333333;
   --text:#ffffff;--text2:#e0e0e0;--muted:#666666;--muted2:#444444;
-  --green:#22c55e;--orange:#f59e0b;--red:#ef4444;--blue:#3b82f6;
+  --green:#22c55e;--orange:#e61a1a;--red:#ef4444;--accent:#e61a1a;
 }
 body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;-webkit-font-smoothing:antialiased}
 .auth-wrap{max-width:430px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:32px 20px 48px;background:var(--bg)}
 .auth-logo{text-align:center;margin-bottom:40px}
-.auth-logo-mark{font-size:36px;font-weight:800;letter-spacing:-1px;color:var(--text);line-height:1;font-family:'DM Sans',sans-serif}
-.auth-logo-mark span{color:var(--orange)}
-.auth-logo-sub{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:2px;color:var(--muted);margin-top:4px;text-transform:uppercase}
+.auth-logo-lockup{display:inline-flex;align-items:center;gap:8px}
+.auth-logo-icon{background:var(--accent);border-radius:6px;padding:4px 9px;display:inline-flex;align-items:center;justify-content:center}
+.auth-logo-icon-text{font-size:15px;font-weight:900;color:#fff;letter-spacing:.5px;line-height:1.1;font-family:'DM Sans',sans-serif}
+.auth-logo-race{font-size:28px;font-weight:800;color:var(--text);letter-spacing:1px;line-height:1}
+.auth-logo-sub{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:2px;color:var(--muted);margin-top:6px;text-transform:uppercase}
 .auth-tabs{display:flex;background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:4px;margin-bottom:28px;gap:4px}
 .auth-tab{flex:1;padding:9px;border-radius:9px;border:none;background:transparent;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s}
 .auth-tab.on{background:var(--s3);color:var(--text);border:1px solid var(--border2)}
@@ -144,7 +146,10 @@ export default function AuthPage({ initialMode = "login" }) {
       <style>{AUTH_CSS}</style>
       <div className="auth-wrap">
         <div className="auth-logo">
-          <div className="auth-logo-mark">0X<span>RACE</span></div>
+          <div className="auth-logo-lockup">
+            <div className="auth-logo-icon"><span className="auth-logo-icon-text">0X</span></div>
+            <span className="auth-logo-race">RACE</span>
+          </div>
           <div className="auth-logo-sub">Powered by 0xotics</div>
         </div>
 
@@ -253,7 +258,7 @@ export default function AuthPage({ initialMode = "login" }) {
           {mode === "login" ? "New to 0xRace?" : "Already have an account?"}{" "}
           <span
             onClick={() => switchMode(mode === "login" ? "signup" : "login")}
-            style={{color:"var(--orange)",fontWeight:600,cursor:"pointer"}}
+            style={{color:"var(--accent)",fontWeight:600,cursor:"pointer"}}
           >
             {mode === "login" ? "Sign up" : "Log in"}
           </span>
