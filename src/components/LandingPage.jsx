@@ -1,5 +1,7 @@
 import logoImg from "../assets/logo-transparent.png";
 
+const CAR_PHOTO = "https://images.unsplash.com/photo-1580274455191-1c62238fa1c9?auto=format&fit=crop&w=1920&q=80";
+
 const LANDING_CSS = `
 @import url('https://fonts.cdnfonts.com/css/pricedown');
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -32,100 +34,117 @@ html{scroll-behavior:smooth}
 body{background:var(--bg);color:var(--text);font-family:var(--font-sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
 
 /* ── NAV ── */
-.lp-nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:0 24px;height:60px;display:flex;align-items:center;justify-content:space-between;background:rgba(8,8,8,0.90);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,0.04)}
-.lp-logo{display:flex;align-items:center;gap:8px}
-.lp-logo-icon{background:var(--accent);border-radius:5px;padding:3px 7px;display:inline-flex;align-items:center;justify-content:center}
-.lp-logo-icon-text{font-family:var(--font-display);font-size:13px;font-weight:900;color:#fff;letter-spacing:.5px;line-height:1.1}
-.lp-logo-text{font-family:var(--font-display);font-size:20px;font-weight:800;color:var(--text);letter-spacing:1px;line-height:1}
+.lp-nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:0 32px;height:64px;display:flex;align-items:center;justify-content:space-between;background:rgba(8,8,8,0.85);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid rgba(255,255,255,0.05)}
+.lp-logo{display:flex;align-items:center}
 .lp-nav-actions{display:flex;gap:10px;align-items:center}
-.lp-nav-login{background:transparent;border:1px solid var(--border2);border-radius:8px;padding:8px 16px;font-family:var(--font-sans);font-size:13px;font-weight:600;color:var(--text2);cursor:pointer;transition:border-color .15s,color .15s}
+.lp-nav-login{background:transparent;border:1px solid var(--border2);border-radius:8px;padding:8px 18px;font-family:var(--font-sans);font-size:13px;font-weight:600;color:var(--text2);cursor:pointer;transition:border-color .15s,color .15s}
 .lp-nav-login:hover{border-color:var(--accent);color:var(--text)}
-.lp-nav-signup{background:var(--accent);border:none;border-radius:8px;padding:8px 18px;font-family:var(--font-sans);font-size:13px;font-weight:700;color:#fff;cursor:pointer;transition:background .15s,box-shadow .15s}
+.lp-nav-signup{background:var(--accent);border:none;border-radius:8px;padding:9px 20px;font-family:var(--font-sans);font-size:13px;font-weight:700;color:#fff;cursor:pointer;transition:background .15s,box-shadow .15s,transform .12s}
 .lp-nav-signup:hover{background:var(--accent-hover);box-shadow:0 0 20px var(--accent-glow)}
+.lp-nav-signup:active{transform:scale(0.97)}
 
 /* ── HERO ── */
 .lp-hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:120px 24px 80px;position:relative;overflow:hidden}
-.lp-hero-glow{position:absolute;top:-10%;left:50%;transform:translateX(-50%);width:900px;height:600px;background:radial-gradient(ellipse at center,rgba(230,26,26,0.12) 0%,transparent 70%);pointer-events:none}
+.lp-hero-glow{position:absolute;top:-10%;left:50%;transform:translateX(-50%);width:1000px;height:700px;background:radial-gradient(ellipse at center,rgba(230,26,26,0.1) 0%,transparent 65%);pointer-events:none}
 .lp-hero-glow2{position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:600px;height:300px;background:radial-gradient(ellipse at center,rgba(230,26,26,0.05) 0%,transparent 70%);pointer-events:none}
-.lp-hero-eyebrow{font-family:var(--font-mono);font-size:11px;letter-spacing:3px;color:var(--accent);text-transform:uppercase;margin-bottom:20px;opacity:.9}
-.lp-hero-title{font-family:var(--font-display);font-size:clamp(52px,10vw,110px);line-height:.95;letter-spacing:2px;color:var(--text);text-transform:uppercase;margin-bottom:28px;max-width:900px}
-.lp-hero-title span{color:var(--accent);text-shadow:0 0 60px rgba(230,26,26,0.4)}
-.lp-hero-sub{font-size:clamp(15px,2vw,19px);color:var(--text2);line-height:1.65;max-width:540px;margin-bottom:48px;font-weight:400}
+.lp-hero-eyebrow{display:inline-flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:11px;letter-spacing:3px;color:var(--accent);text-transform:uppercase;margin-bottom:24px;background:rgba(230,26,26,0.08);border:1px solid rgba(230,26,26,0.2);border-radius:100px;padding:6px 16px}
+.lp-hero-title{font-family:var(--font-display);font-size:clamp(48px,9vw,108px);line-height:.95;letter-spacing:2px;color:var(--text);text-transform:uppercase;margin-bottom:28px;max-width:960px}
+.lp-hero-title span{color:var(--accent);text-shadow:0 0 80px rgba(230,26,26,0.35)}
+.lp-hero-sub{font-size:clamp(15px,2vw,18px);color:var(--text2);line-height:1.7;max-width:520px;margin-bottom:48px;font-weight:400}
 .lp-hero-sub strong{color:var(--text);font-weight:600}
-.lp-hero-cta{display:flex;gap:14px;align-items:center;justify-content:center;flex-wrap:wrap}
-.lp-btn-primary{background:var(--accent);border:none;border-radius:10px;padding:16px 36px;font-family:var(--font-sans);font-size:15px;font-weight:700;color:#fff;cursor:pointer;transition:background .15s,box-shadow .2s,transform .15s;letter-spacing:.2px}
+.lp-hero-cta{display:flex;gap:14px;align-items:center;justify-content:center;flex-wrap:wrap;margin-bottom:16px}
+.lp-hero-member-note{font-size:12px;color:var(--muted);letter-spacing:.02em}
+.lp-hero-member-note a{color:var(--text2);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.lp-btn-primary{background:var(--accent);border:none;border-radius:10px;padding:16px 38px;font-family:var(--font-sans);font-size:15px;font-weight:700;color:#fff;cursor:pointer;transition:background .15s,box-shadow .2s,transform .12s;letter-spacing:.2px}
 .lp-btn-primary:hover{background:var(--accent-hover);box-shadow:0 0 40px var(--accent-glow);transform:translateY(-1px)}
-.lp-btn-primary:active{transform:translateY(0)}
-.lp-btn-secondary{background:transparent;border:1px solid var(--border2);border-radius:10px;padding:15px 28px;font-family:var(--font-sans);font-size:15px;font-weight:600;color:var(--text2);cursor:pointer;transition:border-color .15s,color .15s,transform .15s;text-decoration:none;display:inline-block;letter-spacing:.2px}
-.lp-btn-secondary:hover{border-color:var(--accent);color:var(--text);transform:translateY(-1px)}
-.lp-hero-stats{display:flex;gap:40px;margin-top:72px;flex-wrap:wrap;justify-content:center}
+.lp-btn-primary:active{transform:scale(0.97)}
+.lp-btn-secondary{background:transparent;border:1px solid var(--border2);border-radius:10px;padding:15px 28px;font-family:var(--font-sans);font-size:15px;font-weight:600;color:var(--text2);cursor:pointer;transition:border-color .15s,color .15s,transform .12s;text-decoration:none;display:inline-block;letter-spacing:.2px}
+.lp-btn-secondary:hover{border-color:var(--border2);background:var(--s2);color:var(--text);transform:translateY(-1px)}
+.lp-hero-stats{display:flex;gap:48px;margin-top:80px;flex-wrap:wrap;justify-content:center}
 .lp-stat{text-align:center}
-.lp-stat-num{font-family:var(--font-display);font-size:36px;color:var(--text);letter-spacing:1px;line-height:1}
+.lp-stat-num{font-family:var(--font-display);font-size:38px;color:var(--text);letter-spacing:1px;line-height:1}
 .lp-stat-num span{color:var(--accent)}
 .lp-stat-lbl{font-size:11px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-top:5px}
 
 /* ── DIVIDER ── */
-.lp-divider{height:1px;background:linear-gradient(90deg,transparent,var(--border2) 20%,var(--border2) 80%,transparent);margin:0 24px}
+.lp-divider{height:1px;background:linear-gradient(90deg,transparent,var(--border2) 20%,var(--border2) 80%,transparent);margin:0 32px}
+
+/* ── CAR PHOTO ── */
+.lp-car-section{position:relative;height:500px;overflow:hidden;margin:0}
+.lp-car-img{width:100%;height:100%;object-fit:cover;object-position:center 60%;display:block;filter:brightness(0.55)}
+.lp-car-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;background:linear-gradient(to bottom,transparent 0%,rgba(8,8,8,0.3) 60%,var(--bg) 100%)}
+.lp-car-quote{font-family:var(--font-display);font-size:clamp(28px,4vw,52px);color:#fff;letter-spacing:2px;text-transform:uppercase;text-align:center;text-shadow:0 2px 40px rgba(0,0,0,0.8);max-width:700px;line-height:1.1}
+.lp-car-quote span{color:var(--accent)}
 
 /* ── FEATURES ── */
-.lp-features{padding:96px 24px;max-width:1100px;margin:0 auto}
-.lp-section-label{font-family:var(--font-mono);font-size:11px;letter-spacing:3px;color:var(--accent);text-transform:uppercase;margin-bottom:14px;text-align:center}
-.lp-section-title{font-family:var(--font-display);font-size:clamp(32px,5vw,52px);text-align:center;letter-spacing:1px;margin-bottom:56px;line-height:1}
-.lp-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
-.lp-card{background:var(--s2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:32px 28px;position:relative;overflow:hidden;transition:border-color .2s,transform .2s}
+.lp-features{padding:96px 32px;max-width:1140px;margin:0 auto}
+.lp-section-label{font-family:var(--font-mono);font-size:10px;letter-spacing:3px;color:var(--accent);text-transform:uppercase;margin-bottom:12px;text-align:center}
+.lp-section-title{font-family:var(--font-display);font-size:clamp(30px,5vw,50px);text-align:center;letter-spacing:1px;margin-bottom:56px;line-height:1}
+.lp-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.lp-card{background:var(--s2);border:1px solid var(--border);border-radius:18px;padding:32px 28px;position:relative;overflow:hidden;transition:border-color .25s,transform .25s,box-shadow .25s}
 .lp-card::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent-glow-sm),transparent);opacity:0;transition:opacity .3s}
-.lp-card:hover{border-color:var(--border2);transform:translateY(-3px)}
+.lp-card:hover{border-color:var(--border2);transform:translateY(-4px);box-shadow:0 20px 60px rgba(0,0,0,0.4)}
 .lp-card:hover::before{opacity:1}
-.lp-card-glow{position:absolute;top:-40px;right:-40px;width:140px;height:140px;border-radius:50%;opacity:.04;background:var(--accent)}
-.lp-card-icon{width:44px;height:44px;background:var(--s3);border:1px solid var(--border2);border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:20px}
+.lp-card-glow{position:absolute;top:-40px;right:-40px;width:160px;height:160px;border-radius:50%;opacity:.05;background:var(--accent)}
+.lp-card-icon{width:46px;height:46px;background:var(--s3);border:1px solid var(--border2);border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:20px}
 .lp-card-tag{display:inline-block;font-family:var(--font-mono);font-size:9px;letter-spacing:2px;color:var(--accent);text-transform:uppercase;background:rgba(230,26,26,.08);border:1px solid rgba(230,26,26,.18);border-radius:4px;padding:3px 8px;margin-bottom:14px}
-.lp-card-title{font-size:19px;font-weight:700;letter-spacing:-.3px;margin-bottom:10px;color:var(--text)}
-.lp-card-body{font-size:14px;color:var(--text2);line-height:1.65}
-.lp-card-examples{margin-top:16px;display:flex;flex-direction:column;gap:5px}
+.lp-card-title{font-size:18px;font-weight:700;letter-spacing:-.3px;margin-bottom:10px;color:var(--text)}
+.lp-card-body{font-size:14px;color:var(--text2);line-height:1.7}
+.lp-card-examples{margin-top:18px;display:flex;flex-direction:column;gap:6px}
 .lp-card-ex{font-family:var(--font-mono);font-size:11px;color:var(--muted);display:flex;align-items:center;gap:7px}
 .lp-card-ex::before{content:"→";color:var(--accent);opacity:.6}
 
-/* ── HOW IT WORKS ── */
-.lp-how{padding:80px 24px;background:linear-gradient(180deg,var(--bg) 0%,var(--s1) 50%,var(--bg) 100%)}
-.lp-how-inner{max-width:800px;margin:0 auto;text-align:center}
-.lp-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:48px;position:relative}
-.lp-steps::before{content:"";position:absolute;top:22px;left:16.67%;right:16.67%;height:1px;background:linear-gradient(90deg,var(--border2),var(--accent-glow-sm),var(--border2))}
-.lp-step{display:flex;flex-direction:column;align-items:center;text-align:center;padding:0 16px}
-.lp-step-num{width:44px;height:44px;border-radius:50%;background:var(--s2);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--accent);margin-bottom:16px;position:relative;z-index:1}
-.lp-step-title{font-size:14px;font-weight:700;margin-bottom:6px;color:var(--text)}
-.lp-step-body{font-size:12px;color:var(--muted);line-height:1.6}
+/* ── MEMBERSHIP ── */
+.lp-membership{padding:96px 32px;background:linear-gradient(180deg,var(--bg) 0%,var(--s1) 50%,var(--bg) 100%)}
+.lp-membership-inner{max-width:860px;margin:0 auto;text-align:center}
+.lp-pricing-cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:48px;text-align:left}
+.lp-pricing-card{background:var(--s2);border:1px solid var(--border);border-radius:18px;padding:32px 28px;position:relative;overflow:hidden}
+.lp-pricing-card.featured{border-color:var(--accent);background:rgba(230,26,26,0.05)}
+.lp-pricing-card.featured::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent)}
+.lp-pricing-badge{display:inline-block;font-family:var(--font-mono);font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:4px 10px;border-radius:4px;margin-bottom:20px;font-weight:700}
+.lp-pricing-badge.member{background:rgba(230,26,26,.12);color:var(--accent);border:1px solid rgba(230,26,26,.25)}
+.lp-pricing-badge.access{background:var(--s3);color:var(--muted);border:1px solid var(--border2)}
+.lp-pricing-price{font-family:var(--font-display);font-size:52px;color:var(--text);letter-spacing:-1px;line-height:1;margin-bottom:6px}
+.lp-pricing-price span{font-size:20px;color:var(--muted);font-family:var(--font-sans);font-weight:400;letter-spacing:0}
+.lp-pricing-title{font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px}
+.lp-pricing-sub{font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:20px}
+.lp-pricing-features{display:flex;flex-direction:column;gap:8px}
+.lp-pricing-feature{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2)}
+.lp-pricing-feature::before{content:"✓";color:var(--green);font-weight:700;font-size:12px;flex-shrink:0}
 
 /* ── CTA BANNER ── */
-.lp-cta-banner{padding:96px 24px;text-align:center;position:relative;overflow:hidden}
-.lp-cta-banner-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:700px;height:400px;background:radial-gradient(ellipse at center,rgba(230,26,26,0.1) 0%,transparent 70%);pointer-events:none}
-.lp-cta-title{font-family:var(--font-display);font-size:clamp(36px,6vw,64px);letter-spacing:1.5px;margin-bottom:16px}
-.lp-cta-sub{font-size:16px;color:var(--text2);margin-bottom:40px;max-width:420px;margin-left:auto;margin-right:auto;line-height:1.6}
+.lp-cta-banner{padding:100px 24px;text-align:center;position:relative;overflow:hidden}
+.lp-cta-banner-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:700px;height:400px;background:radial-gradient(ellipse at center,rgba(230,26,26,0.09) 0%,transparent 70%);pointer-events:none}
+.lp-cta-title{font-family:var(--font-display);font-size:clamp(34px,6vw,64px);letter-spacing:1.5px;margin-bottom:16px}
+.lp-cta-sub{font-size:16px;color:var(--text2);margin-bottom:40px;max-width:420px;margin-left:auto;margin-right:auto;line-height:1.65}
 
 /* ── FOOTER ── */
-.lp-footer{border-top:1px solid var(--border);padding:40px 24px 32px;max-width:1100px;margin:0 auto}
-.lp-footer-inner{display:flex;align-items:flex-start;justify-content:space-between;gap:40px;flex-wrap:wrap;margin-bottom:32px}
-.lp-footer-brand p{font-size:12px;color:var(--muted);max-width:240px;line-height:1.6;margin-top:6px}
-.lp-footer-links{display:flex;gap:48px;flex-wrap:wrap}
-.lp-footer-col h4{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:12px}
-.lp-footer-col a{display:block;font-size:13px;color:var(--text2);text-decoration:none;margin-bottom:8px;transition:color .15s}
-.lp-footer-col a:hover{color:var(--accent)}
+.lp-footer{border-top:1px solid var(--border);padding:48px 32px 32px;max-width:1140px;margin:0 auto}
+.lp-footer-inner{display:flex;align-items:flex-start;justify-content:space-between;gap:40px;flex-wrap:wrap;margin-bottom:40px}
+.lp-footer-brand p{font-size:12px;color:var(--muted);max-width:220px;line-height:1.7;margin-top:10px}
+.lp-footer-links{display:flex;gap:56px;flex-wrap:wrap}
+.lp-footer-col h4{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted2);font-weight:600;margin-bottom:14px}
+.lp-footer-col a{display:block;font-size:13px;color:var(--muted);text-decoration:none;margin-bottom:9px;transition:color .15s}
+.lp-footer-col a:hover{color:var(--text)}
 .lp-footer-bottom{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding-top:24px;border-top:1px solid var(--border)}
-.lp-footer-bottom p{font-size:11px;color:var(--muted)}
-.lp-footer-bottom a{font-size:11px;color:var(--muted);text-decoration:none;transition:color .15s}
-.lp-footer-bottom a:hover{color:var(--text2)}
+.lp-footer-bottom p{font-size:11px;color:var(--muted2)}
+.lp-footer-bottom a{font-size:11px;color:var(--muted2);text-decoration:none;transition:color .15s}
+.lp-footer-bottom a:hover{color:var(--muted)}
 
 /* ── RESPONSIVE ── */
 @media(max-width:768px){
+  .lp-nav{padding:0 16px;height:56px}
+  .lp-hero{padding:100px 20px 64px}
+  .lp-features{padding:72px 20px}
   .lp-cards{grid-template-columns:1fr}
-  .lp-steps{grid-template-columns:1fr;gap:32px}
-  .lp-steps::before{display:none}
+  .lp-car-section{height:320px}
+  .lp-membership{padding:72px 20px}
+  .lp-pricing-cards{grid-template-columns:1fr}
   .lp-hero-stats{gap:28px}
+  .lp-footer{padding:40px 20px 28px}
   .lp-footer-links{gap:28px}
   .lp-footer-inner{flex-direction:column;gap:28px}
   .lp-footer-bottom{flex-direction:column;text-align:center}
-  .lp-nav{padding:0 16px}
-  .lp-features{padding:72px 16px}
-  .lp-hero{padding:100px 16px 64px}
 }
 @media(min-width:769px) and (max-width:1024px){
   .lp-cards{grid-template-columns:1fr 1fr}
@@ -140,11 +159,11 @@ export default function LandingPage({ onSignUp, onLogin }) {
       {/* NAV */}
       <nav className="lp-nav">
         <div className="lp-logo">
-          <img src={logoImg} alt="0x" style={{height:40,width:"auto",display:"block"}} />
+          <img src={logoImg} alt="0x" style={{height:38,width:"auto",display:"block"}} />
         </div>
         <div className="lp-nav-actions">
           <button className="lp-nav-login" onClick={onLogin}>Log In</button>
-          <button className="lp-nav-signup" onClick={onSignUp}>Join Free</button>
+          <button className="lp-nav-signup" onClick={onSignUp}>Get Access</button>
         </div>
       </nav>
 
@@ -152,17 +171,22 @@ export default function LandingPage({ onSignUp, onLogin }) {
       <section className="lp-hero" id="home">
         <div className="lp-hero-glow"/>
         <div className="lp-hero-glow2"/>
-        <div className="lp-hero-eyebrow">Live driving community · US wide</div>
+        <div className="lp-hero-eyebrow">
+          <span>●</span> Exclusive to 0xdrive Members
+        </div>
         <h1 className="lp-hero-title">
-          Pick a lobby.<br/><span>Prove</span> your speed.
+          Find your crew.<br/><span>Hit the streets.</span>
         </h1>
         <p className="lp-hero-sub">
-          0xRace makes driving feel like a <strong>video game</strong>. Find your crew, join a live lobby, track locations in real-time, and climb the leaderboard.
+          Drop into a live lobby, see who's near you, and link up with your crew in seconds. <strong>Built for enthusiasts who actually drive.</strong>
         </p>
         <div className="lp-hero-cta">
-          <button className="lp-btn-primary" onClick={onSignUp}>Join 0xRace — It's Free</button>
-          <a className="lp-btn-secondary" href="#features">See How It Works</a>
+          <button className="lp-btn-primary" onClick={onSignUp}>Join the Scene</button>
+          <a className="lp-btn-secondary" href="#features">See What's Inside</a>
         </div>
+        <p className="lp-hero-member-note">
+          Free for 0xdrive Tier 2 members &nbsp;·&nbsp; <span onClick={onSignUp} style={{cursor:"pointer"}}>$45/mo otherwise</span>
+        </p>
         <div className="lp-hero-stats">
           <div className="lp-stat">
             <div className="lp-stat-num"><span>Live</span></div>
@@ -179,7 +203,15 @@ export default function LandingPage({ onSignUp, onLogin }) {
         </div>
       </section>
 
-      <div className="lp-divider"/>
+      {/* CAR PHOTO */}
+      <section className="lp-car-section">
+        <img src={CAR_PHOTO} className="lp-car-img" alt="BMW M3" />
+        <div className="lp-car-overlay">
+          <p className="lp-car-quote">Built for the ones who <span>live for the drive.</span></p>
+        </div>
+      </section>
+
+      <div className="lp-divider" style={{margin:"0"}}/>
 
       {/* FEATURES */}
       <section className="lp-features" id="features">
@@ -199,12 +231,12 @@ export default function LandingPage({ onSignUp, onLogin }) {
             <div className="lp-card-tag">Live Lobbies</div>
             <div className="lp-card-title">Go live with your crew</div>
             <div className="lp-card-body">
-              Create or join a live lobby, see who's in it, what they drive, and where they're at. Sort by closest distance from your location.
+              Create or join a live lobby, see who's in it, what they drive, and where they're at. Sorted by distance from you.
             </div>
             <div className="lp-card-examples">
               <div className="lp-card-ex">Cruising · Drifting · Drag Racing</div>
-              <div className="lp-card-ex">Request-to-join or open lobbies</div>
-              <div className="lp-card-ex">Live GPS in-lobby tracking</div>
+              <div className="lp-card-ex">Open or request-to-join lobbies</div>
+              <div className="lp-card-ex">Live GPS tracking inside lobbies</div>
             </div>
           </div>
 
@@ -218,13 +250,13 @@ export default function LandingPage({ onSignUp, onLogin }) {
               </svg>
             </div>
             <div className="lp-card-tag" style={{color:"#00c060",background:"rgba(0,192,96,.08)",borderColor:"rgba(0,192,96,.2)"}}>Groups</div>
-            <div className="lp-card-title">Join your local scene</div>
+            <div className="lp-card-title">Find your local scene</div>
             <div className="lp-card-body">
-              Permanent communities for your crew. Public or private groups, group chat, events, and the ability to spin up a private lobby.
+              Permanent communities for your crew. Group chat, events, and private lobbies — all in one place.
             </div>
             <div className="lp-card-examples">
               <div className="lp-card-ex" style={{color:"#00c060"}}>PDX JDM · PDX Euro · PDX G8X</div>
-              <div className="lp-card-ex" style={{color:"#00c060"}}>Private lobbies from groups</div>
+              <div className="lp-card-ex" style={{color:"#00c060"}}>Private group lobbies</div>
               <div className="lp-card-ex" style={{color:"#00c060"}}>Real-time group chat</div>
             </div>
           </div>
@@ -240,38 +272,54 @@ export default function LandingPage({ onSignUp, onLogin }) {
             <div className="lp-card-tag" style={{color:"#f59e0b",background:"rgba(245,158,11,.08)",borderColor:"rgba(245,158,11,.2)"}}>Live Map</div>
             <div className="lp-card-title">See who's moving</div>
             <div className="lp-card-body">
-              General vicinity on the public map. Join a lobby to unlock precise live tracking for everyone inside. Privacy-first by design.
+              Public map shows the general area. Inside a lobby, get precise live tracking for everyone in it. Privacy-first by design.
             </div>
             <div className="lp-card-examples">
-              <div className="lp-card-ex" style={{color:"#f59e0b"}}>Precise location inside lobbies</div>
+              <div className="lp-card-ex" style={{color:"#f59e0b"}}>Precise tracking inside lobbies</div>
               <div className="lp-card-ex" style={{color:"#f59e0b"}}>Fuzzy public map — stay safe</div>
-              <div className="lp-card-ex" style={{color:"#f59e0b"}}>Set destinations for your crew</div>
+              <div className="lp-card-ex" style={{color:"#f59e0b"}}>Set destinations for the crew</div>
             </div>
           </div>
 
         </div>
       </section>
 
-      {/* HOW IT WORKS */}
-      <section className="lp-how" id="how">
-        <div className="lp-how-inner">
-          <div className="lp-section-label">Getting started</div>
-          <h2 className="lp-section-title">Three steps to the scene</h2>
-          <div className="lp-steps">
-            <div className="lp-step">
-              <div className="lp-step-num">01</div>
-              <div className="lp-step-title">Create your profile</div>
-              <div className="lp-step-body">Sign up in seconds. Add your username, your build, and your best times.</div>
+      <div className="lp-divider"/>
+
+      {/* MEMBERSHIP */}
+      <section className="lp-membership" id="membership">
+        <div className="lp-membership-inner">
+          <div className="lp-section-label">Access</div>
+          <h2 className="lp-section-title">Made for 0xdrive members</h2>
+          <p style={{fontSize:15,color:"var(--muted)",maxWidth:520,margin:"0 auto",lineHeight:1.7}}>
+            0xRace is a companion app for the 0xdrive community. Tier 2 members get full access included — or jump in for $45/month.
+          </p>
+          <div className="lp-pricing-cards">
+            <div className="lp-pricing-card featured">
+              <div className="lp-pricing-badge member">0xdrive Tier 2</div>
+              <div className="lp-pricing-price">$0<span>/mo</span></div>
+              <div className="lp-pricing-title">Included with membership</div>
+              <div className="lp-pricing-sub">Full 0xRace access comes with your 0xdrive Tier 2 membership. No extra charge.</div>
+              <div className="lp-pricing-features">
+                <div className="lp-pricing-feature">All live lobbies</div>
+                <div className="lp-pricing-feature">Groups & crew chat</div>
+                <div className="lp-pricing-feature">Live GPS tracking</div>
+                <div className="lp-pricing-feature">Leaderboards</div>
+                <div className="lp-pricing-feature">Full profile & car showcase</div>
+              </div>
             </div>
-            <div className="lp-step">
-              <div className="lp-step-num">02</div>
-              <div className="lp-step-title">Join a group or lobby</div>
-              <div className="lp-step-body">Find your local crew or jump straight into a live lobby near you.</div>
-            </div>
-            <div className="lp-step">
-              <div className="lp-step-num">03</div>
-              <div className="lp-step-title">Hit the streets</div>
-              <div className="lp-step-body">Track your runs, climb the leaderboard — city, state, and national rankings.</div>
+            <div className="lp-pricing-card">
+              <div className="lp-pricing-badge access">Standard Access</div>
+              <div className="lp-pricing-price">$45<span>/mo</span></div>
+              <div className="lp-pricing-title">Open access</div>
+              <div className="lp-pricing-sub">Not a Tier 2 member? You can still get full 0xRace access for $45/month.</div>
+              <div className="lp-pricing-features">
+                <div className="lp-pricing-feature">All live lobbies</div>
+                <div className="lp-pricing-feature">Groups & crew chat</div>
+                <div className="lp-pricing-feature">Live GPS tracking</div>
+                <div className="lp-pricing-feature">Leaderboards</div>
+                <div className="lp-pricing-feature">Full profile & car showcase</div>
+              </div>
             </div>
           </div>
         </div>
@@ -280,11 +328,11 @@ export default function LandingPage({ onSignUp, onLogin }) {
       {/* BOTTOM CTA */}
       <section className="lp-cta-banner">
         <div className="lp-cta-banner-glow"/>
-        <div className="lp-hero-eyebrow" style={{marginBottom:16}}>Ready to run?</div>
+        <div style={{fontFamily:"var(--font-mono)",fontSize:11,letterSpacing:"3px",color:"var(--accent)",textTransform:"uppercase",marginBottom:16,opacity:.9}}>Ready to roll?</div>
         <h2 className="lp-cta-title">Your lobby is waiting.</h2>
-        <p className="lp-cta-sub">Free to join. No entry fee. Just you, your car, and the streets.</p>
-        <button className="lp-btn-primary" onClick={onSignUp} style={{fontSize:16,padding:"17px 44px"}}>
-          Create Your Account
+        <p className="lp-cta-sub">Grab your keys. Your crew is already out there.</p>
+        <button className="lp-btn-primary" onClick={onSignUp} style={{fontSize:16,padding:"17px 48px"}}>
+          Get Access
         </button>
       </section>
 
@@ -293,30 +341,30 @@ export default function LandingPage({ onSignUp, onLogin }) {
         <div className="lp-footer">
           <div className="lp-footer-inner">
             <div className="lp-footer-brand">
-              <div style={{marginBottom:8}}>
+              <div style={{marginBottom:10}}>
                 <img src={logoImg} alt="0x" style={{height:34,width:"auto",display:"block"}} />
               </div>
-              <p>A live driving community app. Find your crew, pick a lobby, make the streets feel like a game.</p>
+              <p>A live driving community for 0xdrive members. Find your crew, pick a lobby, make every drive count.</p>
             </div>
             <div className="lp-footer-links">
               <div className="lp-footer-col">
                 <h4>Product</h4>
                 <a href="#features">Features</a>
-                <a href="#how">How It Works</a>
-                <a href="#" onClick={e=>{e.preventDefault();onSignUp();}}>Sign Up</a>
+                <a href="#membership">Membership</a>
+                <a href="#" onClick={e=>{e.preventDefault();onSignUp();}}>Get Access</a>
                 <a href="#" onClick={e=>{e.preventDefault();onLogin();}}>Log In</a>
               </div>
               <div className="lp-footer-col">
                 <h4>Ecosystem</h4>
                 <a href="https://0xotics.com" target="_blank" rel="noopener noreferrer">0xotics.com</a>
-                <a href="#" style={{cursor:"default",opacity:.4}}>0xRace API</a>
-                <a href="#" style={{cursor:"default",opacity:.4}}>Press Kit</a>
+                <a href="#" style={{cursor:"default",opacity:.35}}>0xdrive</a>
+                <a href="#" style={{cursor:"default",opacity:.35}}>Press Kit</a>
               </div>
               <div className="lp-footer-col">
                 <h4>Social</h4>
-                <a href="#" style={{cursor:"default",opacity:.4}}>Instagram</a>
-                <a href="#" style={{cursor:"default",opacity:.4}}>Twitter / X</a>
-                <a href="#" style={{cursor:"default",opacity:.4}}>TikTok</a>
+                <a href="#" style={{cursor:"default",opacity:.35}}>Instagram</a>
+                <a href="#" style={{cursor:"default",opacity:.35}}>Twitter / X</a>
+                <a href="#" style={{cursor:"default",opacity:.35}}>TikTok</a>
               </div>
             </div>
           </div>
