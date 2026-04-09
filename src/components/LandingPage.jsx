@@ -1,6 +1,6 @@
 import logoImg from "../assets/logo-transparent.png";
 
-const CAR_PHOTO = "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1920&q=80";
+const CAR_PHOTO = "https://images.unsplash.com/photo-1580273916550-e323be2ae537?auto=format&fit=crop&w=1920&q=80";
 
 const LANDING_CSS = `
 @import url('https://fonts.cdnfonts.com/css/pricedown');
@@ -71,7 +71,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);-webkit
 
 /* ── CAR PHOTO ── */
 .lp-car-section{position:relative;height:500px;overflow:hidden;margin:0}
-.lp-car-img{width:100%;height:100%;object-fit:cover;object-position:center 60%;display:block;filter:brightness(0.55)}
+.lp-car-img{width:100%;height:100%;object-fit:cover;object-position:center center;display:block;filter:brightness(0.6)}
 .lp-car-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;background:linear-gradient(to bottom,transparent 0%,rgba(8,8,8,0.3) 60%,var(--bg) 100%)}
 .lp-car-quote{font-family:var(--font-display);font-size:clamp(28px,4vw,52px);color:#fff;letter-spacing:2px;text-transform:uppercase;text-align:center;text-shadow:0 2px 40px rgba(0,0,0,0.8);max-width:700px;line-height:1.1}
 .lp-car-quote span{color:var(--accent)}
