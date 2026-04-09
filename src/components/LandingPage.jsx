@@ -1,6 +1,6 @@
 import logoImg from "../assets/logo-transparent.png";
 
-const CAR_PHOTO = "https://images.unsplash.com/photo-1580273916550-e323be2ae537?auto=format&fit=crop&w=1920&q=80";
+const CAR_PHOTO = "/g80.JPG";
 
 const LANDING_CSS = `
 @import url('https://fonts.cdnfonts.com/css/pricedown');

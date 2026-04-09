@@ -114,6 +114,7 @@ function profileFromRow(row) {
     lat: row.lat??null, lng: row.lng??null,
     mapVisible: row.map_visible??true,
     bannerUrl: row.banner_url||"",
+    hasAccess: row.has_access??false,
   };
 }
 
@@ -737,6 +738,107 @@ function CreateGroupModal({ myProfile, existingGroups, onClose, onCreateDB }) {
 }
 
 /* ─── APP ────────────────────────────────────────────────── */
+/* ─── PAYWALL SCREEN ─────────────────────────────────────── */
+function PaywallScreen({ session, onAccessGranted, onLogout }) {
+  const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [error, setError] = useState("");
+
+  const handlePay = async () => {
+    setLoading(true); setError("");
+    try {
+      const { data, error: fnErr } = await supabase.functions.invoke("stripe-checkout", {
+        body: { origin: window.location.origin },
+      });
+      if (fnErr) throw fnErr;
+      if (data?.url) window.location.href = data.url;
+      else throw new Error("No checkout URL returned");
+    } catch (err) {
+      console.error("Checkout error:", err);
+      setError("Could not start checkout. Try again.");
+      setLoading(false);
+    }
+  };
+
+  // Poll for access after returning from Stripe (handles ?payment=success)
+  const checkAccess = async () => {
+    setChecking(true); setError("");
+    try {
+      const { data } = await supabase
+        .from("profiles")
+        .select("has_access")
+        .eq("id", session.user.id)
+        .single();
+      if (data?.has_access) {
+        onAccessGranted();
+      } else {
+        setError("Payment not confirmed yet. It may take a moment — try again.");
+      }
+    } catch (err) {
+      setError("Could not verify payment. Check your connection.");
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  // Auto-check on mount if returning from Stripe
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("payment") === "success") {
+      window.history.replaceState({}, "", window.location.pathname);
+      // Give Stripe webhook a moment to fire
+      setTimeout(checkAccess, 1500);
+    }
+  }, []);
+
+  return (
+    <>
+      <style>{CSS}</style>
+      <div className="app" style={{alignItems:"center",justifyContent:"center",padding:"0 20px",textAlign:"center"}}>
+        <div style={{maxWidth:360,width:"100%"}}>
+          <div style={{marginBottom:28}}>
+            <img src={logoImg} alt="0xRace" style={{height:48,width:"auto",marginBottom:16}}/>
+            <div style={{fontSize:24,fontWeight:700,color:"var(--text)",fontFamily:"var(--font-display)",letterSpacing:1,marginBottom:8}}>
+              Unlock 0xRace
+            </div>
+            <div style={{fontSize:14,color:"var(--muted)",lineHeight:1.7}}>
+              Get full access to live lobbies, GPS tracking, groups, and leaderboards — one time, no subscription.
+            </div>
+          </div>
+
+          <div style={{background:"var(--s2)",border:"1px solid var(--border)",borderRadius:16,padding:"24px 20px",marginBottom:20}}>
+            <div style={{fontFamily:"var(--font-display)",fontSize:48,color:"var(--text)",letterSpacing:-1,marginBottom:4}}>$45</div>
+            <div style={{fontSize:12,color:"var(--muted)",marginBottom:20}}>One-time · Lifetime access</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:20,textAlign:"left"}}>
+              {["All live lobbies","Groups & crew chat","Live GPS tracking","Leaderboards","Full profile & car showcase"].map(f=>(
+                <div key={f} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text2)"}}>
+                  <span style={{color:"var(--green)",fontWeight:700,fontSize:12}}>✓</span>{f}
+                </div>
+              ))}
+            </div>
+            {error && <div style={{background:"rgba(255,59,48,.1)",border:"1px solid rgba(255,59,48,.3)",borderRadius:8,padding:"10px 12px",fontSize:12,color:"var(--red)",marginBottom:12,lineHeight:1.5}}>{error}</div>}
+            <button className="btn btn-primary btn-full" style={{borderRadius:10,padding:14,fontSize:14,marginBottom:8}}
+              onClick={handlePay} disabled={loading||checking}>
+              {loading ? "Redirecting to checkout…" : "Pay $45 — Get Access"}
+            </button>
+            <button className="btn btn-secondary btn-full" style={{borderRadius:10,padding:12,fontSize:13}}
+              onClick={checkAccess} disabled={loading||checking}>
+              {checking ? "Checking…" : "I already paid — verify access"}
+            </button>
+          </div>
+
+          <div style={{fontSize:11,color:"var(--muted2)",marginBottom:20,lineHeight:1.6}}>
+            Already an 0xdrive Tier 2 member? Contact us to get access linked.
+          </div>
+          <button onClick={onLogout} style={{background:"none",border:"none",color:"var(--muted2)",fontSize:12,cursor:"pointer"}}>
+            Sign out
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -879,6 +981,17 @@ export default function App() {
   if (!session) {
     if (!showAuth) return <LandingPage onSignUp={()=>{setAuthMode("signup");setShowAuth(true);}} onLogin={()=>{setAuthMode("login");setShowAuth(true);}}/>;
     return <AuthPage initialMode={authMode}/>;
+  }
+
+  // Payment gate — show paywall if user hasn't paid / been granted access
+  if (!myProfile.hasAccess && myProfile.id) {
+    return (
+      <PaywallScreen
+        session={session}
+        onAccessGranted={() => loadData(session.user.id)}
+        onLogout={handleLogout}
+      />
+    );
   }
 
   const myId = session.user.id;
