@@ -140,7 +140,7 @@ export default function LandingPage({ onSignUp, onLogin }) {
       {/* NAV */}
       <nav className="lp-nav">
         <div className="lp-logo">
-          <span style={{fontFamily:"var(--font-display)",fontSize:28,fontWeight:900,letterSpacing:"-.5px",lineHeight:1,background:"linear-gradient(160deg,#e8e8e8 0%,#a0a0a0 50%,#d0d0d0 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text",userSelect:"none"}}>0x</span>
+          <img src={logoImg} alt="0x" style={{width:58,height:36,objectFit:"cover",objectPosition:"50% 46%",display:"block"}} />
         </div>
         <div className="lp-nav-actions">
           <button className="lp-nav-login" onClick={onLogin}>Log In</button>
@@ -294,7 +294,7 @@ export default function LandingPage({ onSignUp, onLogin }) {
           <div className="lp-footer-inner">
             <div className="lp-footer-brand">
               <div style={{marginBottom:8}}>
-                <span style={{fontFamily:"var(--font-display)",fontSize:24,fontWeight:900,letterSpacing:"-.5px",lineHeight:1,background:"linear-gradient(160deg,#e8e8e8 0%,#a0a0a0 50%,#d0d0d0 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text",userSelect:"none"}}>0x</span>
+                <img src={logoImg} alt="0x" style={{width:50,height:31,objectFit:"cover",objectPosition:"50% 46%",display:"block"}} />
               </div>
               <p>A live driving community app. Find your crew, pick a lobby, make the streets feel like a game.</p>
             </div>

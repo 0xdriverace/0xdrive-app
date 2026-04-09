@@ -531,20 +531,21 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);min-hei
 
 /* ─── LOGO COMPONENT ─────────────────────────────────────── */
 function Logo({ sidebarVariant = false }) {
-  const sz = sidebarVariant ? 26 : 30;
+  const h = sidebarVariant ? 32 : 38;
+  const w = Math.round(h * 1.6);
   return (
-    <span style={{
-      fontFamily:"var(--font-display)",
-      fontSize:sz,
-      fontWeight:900,
-      letterSpacing:"-.5px",
-      lineHeight:1,
-      background:"linear-gradient(160deg,#e8e8e8 0%,#a0a0a0 50%,#d0d0d0 100%)",
-      WebkitBackgroundClip:"text",
-      WebkitTextFillColor:"transparent",
-      backgroundClip:"text",
-      userSelect:"none",
-    }}>0x</span>
+    <img
+      src={logoImg}
+      alt="0x"
+      style={{
+        width: w,
+        height: h,
+        objectFit: "cover",
+        objectPosition: "50% 46%",
+        display: "block",
+        flexShrink: 0,
+      }}
+    />
   );
 }
 
