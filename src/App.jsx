@@ -60,8 +60,10 @@ const BLANK_PROFILE = {
   races: {h2h:0, group:0, trial:0, drag:0},
   times: {half_mile:"", quarter_mile:"", zero_sixty:"", zero_120:""},
   socials: {instagram:"", twitter:"", youtube:""},
-  instagram: "", lat: null, lng: null, mapVisible: true,
+  instagram: "", lat: null, lng: null, mapVisible: true, bannerUrl: "",
 };
+
+const GROUP_THEMES = ["#e61a1a","#0066ff","#00c060","#f59e0b","#a855f7","#ec4899","#06b6d4","#ffffff"];
 
 const BLANK_CAR = {
   id: null, make: "", model: "", year: "", trim: "", mods: "", photoUrl: "", buildStage: "stock",
@@ -110,6 +112,7 @@ function profileFromRow(row) {
     socials: {instagram:row.instagram||"", twitter:"", youtube:""},
     lat: row.lat??null, lng: row.lng??null,
     mapVisible: row.map_visible??true,
+    bannerUrl: row.banner_url||"",
   };
 }
 
@@ -439,6 +442,44 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);min-hei
 .friend-active-dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0;box-shadow:0 0 5px rgba(0,192,96,.6)}
 .friend-inactive-dot{width:8px;height:8px;border-radius:50%;background:var(--border3);flex-shrink:0}
 
+/* MPH DISPLAY */
+.mph-bar{margin:0 16px 10px;background:var(--s2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px}
+.mph-row{display:flex;align-items:center;justify-content:space-between}
+.mph-num{font-family:var(--font-mono);font-size:36px;font-weight:700;line-height:1;letter-spacing:-2px;color:var(--accent)}
+.mph-unit{font-size:11px;color:var(--muted);font-weight:500;margin-top:6px}
+.mph-label{font-size:10px;font-weight:600;letter-spacing:1.5px;color:var(--muted2);text-transform:uppercase;margin-bottom:4px}
+.mph-member{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)}
+.mph-member:last-child{border-bottom:none}
+.mph-member-speed{font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--accent)}
+
+/* GROUP DETAIL */
+.group-banner{width:100%;aspect-ratio:3/1;object-fit:cover;display:block;background:var(--s3)}
+.group-banner-empty{width:100%;height:80px;background:var(--s3);display:flex;align-items:center;justify-content:center;color:var(--muted2);font-size:11px;cursor:pointer;transition:background .15s;border-radius:var(--radius-lg) var(--radius-lg) 0 0}
+.group-banner-empty:hover{background:var(--s2)}
+.group-theme-dot{width:20px;height:20px;border-radius:50%;cursor:pointer;transition:transform .12s;flex-shrink:0}
+.group-theme-dot:hover{transform:scale(1.2)}
+.group-theme-dot.sel{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--accent)}
+.post-card{background:var(--s2);border-radius:var(--radius-lg);margin:0 16px 8px;border:1px solid var(--border);padding:14px}
+.post-author{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.post-text{font-size:13px;color:var(--text2);line-height:1.6}
+.post-time{font-size:10px;color:var(--muted2);margin-top:6px}
+.event-card{background:var(--s2);border-radius:var(--radius-lg);margin:0 16px 8px;border:1px solid var(--border);padding:14px;display:flex;align-items:center;gap:12px}
+.event-date{width:44px;height:44px;border-radius:var(--radius-md);background:rgba(230,26,26,.1);border:1px solid rgba(230,26,26,.25);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0}
+.event-date-day{font-size:18px;font-weight:700;color:var(--accent);line-height:1;font-family:var(--font-display)}
+.event-date-mon{font-size:8px;color:var(--muted2);letter-spacing:1px;text-transform:uppercase}
+.event-info{flex:1;min-width:0}
+.event-title{font-size:13px;font-weight:600;color:var(--text)}
+.event-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.event-priv{font-size:9px;padding:2px 6px;border-radius:3px;font-weight:600;letter-spacing:.5px}
+
+/* PROFILE BANNER */
+.profile-banner{width:100%;height:110px;object-fit:cover;display:block;background:var(--s3);position:relative}
+.profile-banner-empty{width:100%;height:110px;background:linear-gradient(135deg,var(--s3) 0%,var(--s2) 100%);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted2);font-size:11px;gap:6px}
+
+/* FOLLOW ME */
+.follow-me-btn{display:flex;align-items:center;gap:8px;padding:10px 16px;background:rgba(0,192,96,.08);border:1px solid rgba(0,192,96,.2);border-radius:var(--radius-md);color:var(--green);font-size:12px;font-weight:600;cursor:pointer;transition:all .12s;width:100%;justify-content:center}
+.follow-me-btn.active{background:rgba(0,192,96,.18);border-color:rgba(0,192,96,.4)}
+
 /* SIDEBAR (desktop only) */
 .sidebar{display:none}
 .main-area{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -489,25 +530,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);min-hei
 
 /* ─── LOGO COMPONENT ─────────────────────────────────────── */
 function Logo({ sidebarVariant = false }) {
-  if (sidebarVariant) {
-    return (
-      <div style={{marginBottom:2}}>
-        <div className="logo-lockup">
-          <div className="logo-icon-wrap">
-            <span className="logo-icon-text">0X</span>
-          </div>
-          <span className="logo-race-text" style={{fontSize:20}}>RACE</span>
-        </div>
-      </div>
-    );
-  }
+  const h = sidebarVariant ? 30 : 34;
   return (
-    <div className="logo-lockup">
-      <div className="logo-icon-wrap">
-        <span className="logo-icon-text">0X</span>
-      </div>
-      <span className="logo-race-text">RACE</span>
-    </div>
+    <img src="/59996.jpg" alt="0xRace" style={{height:h, width:"auto", objectFit:"contain", display:"block", borderRadius:4}} />
   );
 }
 
@@ -632,12 +657,20 @@ function CreateLobbyModal({ myProfile, groups, onClose, onCreate }) {
 }
 
 /* ─── CREATE GROUP MODAL ─────────────────────────────────── */
-function CreateGroupModal({ myProfile, onClose, onCreateDB }) {
-  const [form, setForm] = useState({ name:"", desc:"", type:"open", max:"50", tags:"", banner:"" });
+function CreateGroupModal({ myProfile, existingGroups, onClose, onCreateDB }) {
+  const [form, setForm] = useState({ name:"", desc:"", type:"open", max:"50", tags:"", theme:"#e61a1a" });
   const [saving, setSaving] = useState(false);
+  const [nameErr, setNameErr] = useState("");
+
+  const checkName = (val) => {
+    setForm(f=>({...f,name:val}));
+    if (!val.trim()) { setNameErr(""); return; }
+    const dup = existingGroups?.some(g=>g.name.toLowerCase()===val.trim().toLowerCase());
+    setNameErr(dup?"That group name is already taken.":"");
+  };
 
   const submit = async () => {
-    if (!form.name.trim() || saving) return;
+    if (!form.name.trim() || saving || nameErr) return;
     setSaving(true);
     await onCreateDB(form);
     setSaving(false);
@@ -653,7 +686,9 @@ function CreateGroupModal({ myProfile, onClose, onCreateDB }) {
 
         <div style={{marginBottom:12}}>
           <label className="inp-label">Group Name</label>
-          <input className="inp" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="e.g. PDX Street Kings"/>
+          <input className="inp" value={form.name} onChange={e=>checkName(e.target.value)} placeholder="e.g. PDX Street Kings"
+            style={nameErr?{borderColor:"var(--red)"}:{}}/>
+          {nameErr&&<div style={{fontSize:11,color:"var(--red)",marginTop:4}}>{nameErr}</div>}
         </div>
 
         <div style={{marginBottom:12}}>
@@ -674,13 +709,24 @@ function CreateGroupModal({ myProfile, onClose, onCreateDB }) {
           <input className="inp" type="number" value={form.max} onChange={e=>setForm({...form,max:e.target.value})} placeholder="50" min="2" max="500"/>
         </div>
 
-        <div style={{marginBottom:20}}>
+        <div style={{marginBottom:12}}>
           <label className="inp-label">Tags (comma-separated)</label>
           <input className="inp" value={form.tags} onChange={e=>setForm({...form,tags:e.target.value})} placeholder="e.g. jdm, portland, honda"/>
         </div>
 
+        <div style={{marginBottom:20}}>
+          <label className="inp-label">Group Color Theme</label>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:4}}>
+            {GROUP_THEMES.map(c=>(
+              <div key={c} className={`group-theme-dot ${form.theme===c?"sel":""}`}
+                style={{background:c,border:c==="#ffffff"?"1px solid var(--border2)":"none"}}
+                onClick={()=>setForm({...form,theme:c})}/>
+            ))}
+          </div>
+        </div>
+
         <button className="btn btn-primary btn-full" style={{borderRadius:12,padding:14,marginBottom:8}}
-          disabled={!form.name.trim()||saving} onClick={submit}>
+          disabled={!form.name.trim()||saving||!!nameErr} onClick={submit}>
           {saving?"Creating…":"Create Group"}
         </button>
         <button className="btn btn-secondary btn-full" style={{borderRadius:12,padding:12}} onClick={onClose}>Cancel</button>
@@ -707,6 +753,7 @@ export default function App() {
   const [playerView, setPlayerView] = useState(null);
   const [chatGroupId, setChatGroupId] = useState(null);
   const [lobbyDetailId, setLobbyDetailId] = useState(null);
+  const [groupDetailId, setGroupDetailId] = useState(null);
   const [myProfile, setMyProfile] = useState({...BLANK_PROFILE});
   const [editingProfile, setEditingProfile] = useState(false);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
@@ -746,6 +793,7 @@ export default function App() {
           memberIds: (g.group_members||[]).filter(m=>m.status==="active").map(m=>m.user_id),
           admin: g.created_by, lastActive:"recently", messages:[],
           pendingRequests:[], lat:g.lat??null, lng:g.lng??null,
+          theme: g.theme_color||"#e61a1a", bannerUrl: g.banner_url||"",
         })));
       }
       if (myCarRes.data) setMyCar(carFromRow(myCarRes.data));
@@ -783,7 +831,8 @@ export default function App() {
     const { data: grp, error } = await supabase.from("groups").insert({
       name: form.name.trim(), description: form.desc.trim()||null,
       is_private: form.type==="private", max_members: parseInt(form.max)||50,
-      tags: form.tags.split(",").map(t=>t.trim()).filter(Boolean), created_by: myId,
+      tags: form.tags.split(",").map(t=>t.trim()).filter(Boolean),
+      created_by: myId, theme_color: form.theme||"#e61a1a",
     }).select().single();
     if (error||!grp) { console.error("Create group error:", error); return; }
     await supabase.from("group_members").insert({ group_id:grp.id, user_id:myId, role:"owner", status:"active" });
@@ -791,6 +840,7 @@ export default function App() {
       id:grp.id, name:grp.name, desc:grp.description||"",
       type:grp.is_private?"private":"open", max:grp.max_members,
       tags:grp.tags||[], memberIds:[myId], admin:myId,
+      theme: form.theme||"#e61a1a", bannerUrl:"",
       lastActive:"just now", messages:[], pendingRequests:[],
     }]);
   };
@@ -858,13 +908,13 @@ export default function App() {
 
   const pendingCount = groups.reduce((a,g)=>a+(g.pendingRequests?.length||0),0)
     + lobbies.reduce((a,l)=>a+(l.pendingRequests?.length||0),0);
-  const showNav = !playerView && !chatGroupId && !lobbyDetailId && !editingProfile;
+  const showNav = !playerView && !chatGroupId && !lobbyDetailId && !groupDetailId && !editingProfile;
 
   const TABS = [
     {name:"Lobbies"}, {name:"Groups"}, {name:"Map"}, {name:"Ranks"}, {name:"Profile"},
   ];
   const activeTab = showNav ? tab : null;
-  const goTab = (name) => { setTab(name); setPlayerView(null); setChatGroupId(null); setLobbyDetailId(null); setEditingProfile(false); };
+  const goTab = (name) => { setTab(name); setPlayerView(null); setChatGroupId(null); setLobbyDetailId(null); setGroupDetailId(null); setEditingProfile(false); };
 
   return (
     <>
@@ -900,7 +950,7 @@ export default function App() {
         {/* Main area */}
         <div className="main-area">
           <Header myProfile={myProfile} onLogout={handleLogout} />
-          <div className="content fade" key={tab+playerView+chatGroupId+lobbyDetailId+editingProfile}>
+          <div className="content fade" key={tab+playerView+chatGroupId+lobbyDetailId+groupDetailId+editingProfile}>
             {editingProfile ? (
               <EditProfile myProfile={myProfile} setMyProfile={setMyProfile} myCar={myCar} setMyCar={setMyCar} onBack={()=>setEditingProfile(false)}/>
             ) : playerView ? (
@@ -919,6 +969,15 @@ export default function App() {
                 myProfile={myProfile} allUsers={allUsers} myCar={myCar}
                 isInLobby={isInLobby} sentLR={sentLR} joinLobby={joinLobby}
                 reqLobby={reqLobby} approveLobby={approveLobby} denyLobby={denyLobby}/>
+            ) : groupDetailId ? (
+              <GroupDetail groupId={groupDetailId} groups={groups} setGroups={setGroups}
+                onBack={()=>setGroupDetailId(null)} openPlayer={setPlayerView}
+                openChat={setChatGroupId} myProfile={myProfile} allUsers={allUsers}
+                isInGroup={isInGroup} onCreateLobby={(gid)=>{setGroupDetailId(null);setCreateLobbyOpen(true);}}
+                lobbies={lobbies} onCreateLobbyForGroup={(g)=>{
+                  setGroupDetailId(null);
+                  setCreateLobbyOpen(true);
+                }}/>
             ) : tab==="Lobbies" ? (
               <LobbiesView lobbies={lobbies} setLobbies={setLobbies} myProfile={myProfile}
                 allUsers={allUsers} groups={groups} isInLobby={isInLobby} sentLR={sentLR}
@@ -929,7 +988,8 @@ export default function App() {
               <GroupsView groups={groups} setGroups={setGroups} isInGroup={isInGroup}
                 sentGR={sentGR} joinGroup={joinGroup} reqGroup={reqGroup}
                 openChat={setChatGroupId} pendingCount={pendingCount}
-                allUsers={allUsers} myProfile={myProfile} onCreateGroup={()=>setCreateGroupOpen(true)}/>
+                allUsers={allUsers} myProfile={myProfile} onCreateGroup={()=>setCreateGroupOpen(true)}
+                openGroupDetail={setGroupDetailId}/>
             ) : tab==="Map" ? (
               <MapView groups={groups} openPlayer={setPlayerView}
                 myProfile={myProfile} setMyProfile={setMyProfile} allUsers={allUsers} lobbies={lobbies}/>
@@ -941,7 +1001,7 @@ export default function App() {
                 onCreateGroup={()=>setCreateGroupOpen(true)}
                 myCar={myCar} allUsers={allUsers}/>
             )}
-            {createGroupOpen && <CreateGroupModal myProfile={myProfile} onClose={()=>setCreateGroupOpen(false)} onCreateDB={handleCreateGroupDB}/>}
+            {createGroupOpen && <CreateGroupModal myProfile={myProfile} existingGroups={groups} onClose={()=>setCreateGroupOpen(false)} onCreateDB={handleCreateGroupDB}/>}
             {createLobbyOpen && <CreateLobbyModal myProfile={myProfile} groups={groups} onClose={()=>setCreateLobbyOpen(false)} onCreate={handleCreateLobby}/>}
           </div>
 
@@ -1162,6 +1222,10 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
   const l = lobbies.find(x=>x.id===lobbyId);
   const [memberCars, setMemberCars] = useState({});
   const [memberSpeeds, setMemberSpeeds] = useState({});
+  const [mySpeed, setMySpeed] = useState(null);
+  const [followMe, setFollowMe] = useState(false);
+  const watchIdRef = useRef(null);
+  const speedChannelRef = useRef(null);
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
 
@@ -1191,6 +1255,37 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
     mapRef.current.addControl(new mapboxgl.NavigationControl(),"top-right");
     return ()=>{ if(mapRef.current){mapRef.current.remove();mapRef.current=null;} };
   }, [inLobby, lobbyId]);
+
+  // Live GPS + speed broadcast while in lobby
+  useEffect(()=>{
+    if (!inLobby||!myProfile?.id) return;
+    const channelName = `lobby-speed-${lobbyId}`;
+    const ch = supabase.channel(channelName,{config:{broadcast:{self:false}}});
+    speedChannelRef.current = ch;
+    ch.on("broadcast",{event:"speed"},(payload)=>{
+      if (payload.payload?.userId && payload.payload.userId!==myProfile.id) {
+        setMemberSpeeds(prev=>({...prev,[payload.payload.userId]:payload.payload.mph}));
+      }
+    }).subscribe();
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos)=>{
+        const rawMph = pos.coords.speed!=null ? Math.round(pos.coords.speed*2.237) : 0;
+        const mph = Math.max(0, rawMph);
+        setMySpeed(mph);
+        setMemberSpeeds(prev=>({...prev,[myProfile.id]:mph}));
+        ch.send({type:"broadcast",event:"speed",payload:{userId:myProfile.id,mph}});
+      },
+      ()=>{},
+      {enableHighAccuracy:true,maximumAge:1000,timeout:10000}
+    );
+
+    return ()=>{
+      if (watchIdRef.current!=null) navigator.geolocation.clearWatch(watchIdRef.current);
+      supabase.removeChannel(ch);
+      speedChannelRef.current = null;
+    };
+  }, [inLobby, lobbyId, myProfile?.id]);
 
   if (!l) return null;
   const members = l.memberIds.map(id=>getU(id,allUsers,myProfile)).filter(Boolean);
@@ -1224,9 +1319,44 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
         </div>
       )}
 
-      {/* Lobby map (only for members) */}
+      {/* MPH + Follow Me (only for members) */}
       {inLobby && (
         <>
+          <div className="mph-bar">
+            <div className="mph-label">Your Speed</div>
+            <div className="mph-row">
+              <div>
+                <span className="mph-num">{mySpeed!=null?mySpeed:"—"}</span>
+                <div className="mph-unit">MPH</div>
+              </div>
+              <button
+                className={`follow-me-btn${followMe?" active":""}`}
+                style={{width:"auto",padding:"8px 18px"}}
+                onClick={()=>setFollowMe(f=>!f)}
+              >
+                {followMe?"🟢 Following — No Destination":"📍 Just Follow Me"}
+              </button>
+            </div>
+            {followMe&&<div style={{fontSize:11,color:"var(--green)",marginTop:6,opacity:.8}}>Broadcasting live — no destination set</div>}
+          </div>
+
+          <div className="sec-lbl">Live Speeds</div>
+          <div className="card" style={{marginBottom:8}}>
+            {[...members].sort((a,b)=>(memberSpeeds[b.id]??-1)-(memberSpeeds[a.id]??-1)).map((m,i)=>(
+              <div key={m.id} className="mph-member">
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontFamily:"var(--font-mono)",fontSize:10,color:"var(--muted2)",width:16,textAlign:"right"}}>{i+1}</span>
+                  <div className={`av s28 ${m.id===myProfile.id?"me":""}`}>{m.avatar}</div>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:600}}>@{m.username}</div>
+                    {memberCars[m.id]&&<div style={{fontSize:10,color:"var(--muted)",fontFamily:"var(--font-mono)"}}>{memberCars[m.id].str}</div>}
+                  </div>
+                </div>
+                <span className="mph-member-speed">{memberSpeeds[m.id]!=null?`${memberSpeeds[m.id]} mph`:"—"}</span>
+              </div>
+            ))}
+          </div>
+
           <div className="sec-lbl">Live Map</div>
           <div className="map-wrap" style={{height:220}}>
             <div ref={mapContainer} style={{width:"100%",height:"100%"}}/>
@@ -1298,7 +1428,7 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
 }
 
 /* ─── GROUPS VIEW ────────────────────────────────────────── */
-function GroupsView({ groups, setGroups, isInGroup, sentGR, joinGroup, reqGroup, openChat, pendingCount, allUsers, myProfile, onCreateGroup }) {
+function GroupsView({ groups, setGroups, isInGroup, sentGR, joinGroup, reqGroup, openChat, pendingCount, allUsers, myProfile, onCreateGroup, openGroupDetail }) {
   const [showPending, setShowPending] = useState(false);
   const [q, setQ] = useState("");
 
@@ -1354,7 +1484,7 @@ function GroupsView({ groups, setGroups, isInGroup, sentGR, joinGroup, reqGroup,
       {filtered.length===0&&<div className="empty">No groups yet.</div>}
 
       {filtered.map(g=>(
-        <div key={g.id} className="card">
+        <div key={g.id} className="card" style={{cursor:"pointer",borderLeft:`3px solid ${g.theme||"#e61a1a"}`}} onClick={()=>openGroupDetail(g.id)}>
           <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:6}}>
             <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
               <span className={`gc-type-pill ${g.type}`}>{g.type==="private"?"Private":"Public"}</span>
@@ -1368,8 +1498,8 @@ function GroupsView({ groups, setGroups, isInGroup, sentGR, joinGroup, reqGroup,
           <div className="gc-name">{g.name}</div>
           {g.desc&&<div className="gc-desc">{g.desc}</div>}
           {g.tags?.length>0&&<div className="tags">{g.tags.map(t=><span key={t} className="tag">{t}</span>)}</div>}
-          <div className="gc-actions">
-            {isInGroup(g.id)&&<button className="btn btn-secondary btn-sm" onClick={()=>openChat(g.id)}>Open Chat →</button>}
+          <div className="gc-actions" onClick={e=>e.stopPropagation()}>
+            {isInGroup(g.id)&&<button className="btn btn-secondary btn-sm" onClick={()=>openChat(g.id)}>Chat →</button>}
             {!isInGroup(g.id)&&!sentGR(g.id)&&(
               <button className="btn btn-primary btn-sm" onClick={()=>{
                 if (g.type==="open") joinGroup(g.id);
@@ -1378,6 +1508,7 @@ function GroupsView({ groups, setGroups, isInGroup, sentGR, joinGroup, reqGroup,
             )}
             {!isInGroup(g.id)&&sentGR(g.id)&&<button className="btn btn-secondary btn-sm" disabled>Pending…</button>}
             <span className="gc-last-active">{g.lastActive}</span>
+            <button className="btn btn-secondary btn-sm" style={{marginLeft:"auto"}} onClick={()=>openGroupDetail(g.id)}>View →</button>
           </div>
         </div>
       ))}
@@ -1646,6 +1777,211 @@ function UserProfile({ userId, onBack, isFriend, sentFR, addFR, groups, isInGrou
           </div>
         ))}
       </>)}
+      <div style={{height:20}}/>
+    </div>
+  );
+}
+
+/* ─── GROUP DETAIL ───────────────────────────────────────── */
+function GroupDetail({ groupId, groups, setGroups, onBack, openPlayer, openChat, myProfile, allUsers, isInGroup, lobbies, onCreateLobbyForGroup }) {
+  const g = groups.find(x=>x.id===groupId);
+  const [subTab, setSubTab] = useState("Posts");
+  const [posts, setPosts] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [newPost, setNewPost] = useState("");
+  const [showNewEvent, setShowNewEvent] = useState(false);
+  const [eventForm, setEventForm] = useState({title:"",date:"",location:"",isPublic:true});
+  const [memberCars, setMemberCars] = useState({});
+  const bannerRef = useRef(null);
+  const [bannerPreview, setBannerPreview] = useState(g?.bannerUrl||"");
+
+  useEffect(()=>{
+    if (!g?.memberIds?.length) return;
+    supabase.from("user_cars").select("user_id,year,make,model").in("user_id",g.memberIds).eq("is_primary",true)
+      .then(({data})=>{if(!data)return;const m={};data.forEach(c=>{m[c.user_id]=`${c.year} ${c.make} ${c.model}`;});setMemberCars(m);});
+    // Load posts
+    supabase.from("group_posts").select("*,profiles(username,avatar_initials)").eq("group_id",groupId).order("created_at",{ascending:false}).limit(50)
+      .then(({data})=>{ if(data) setPosts(data); }).catch(()=>{});
+    // Load events
+    supabase.from("group_events").select("*").eq("group_id",groupId).order("event_date",{ascending:true})
+      .then(({data})=>{ if(data) setEvents(data); }).catch(()=>{});
+  },[groupId]);
+
+  if (!g) return null;
+  const inGroup = isInGroup(groupId);
+  const isAdmin = g.admin===myProfile.id;
+  const theme = g.theme||"#e61a1a";
+  const members = g.memberIds.map(id=>getU(id,allUsers,myProfile)).filter(Boolean);
+  const activeLobbies = lobbies.filter(l=>l.groupId===groupId);
+
+  const handleBannerSelect = async(e) => {
+    const file=e.target.files?.[0]; if(!file) return;
+    const preview=URL.createObjectURL(file); setBannerPreview(preview);
+    const ext=file.name.split(".").pop()||"jpg";
+    const path=`groups/${groupId}/${Date.now()}.${ext}`;
+    const{error:upErr}=await supabase.storage.from("car-photos").upload(path,file,{upsert:true});
+    if(upErr){console.error("Banner upload failed",upErr);return;}
+    const{data:{publicUrl}}=supabase.storage.from("car-photos").getPublicUrl(path);
+    await supabase.from("groups").update({banner_url:publicUrl}).eq("id",groupId).catch(()=>{});
+    setGroups(gs=>gs.map(x=>x.id===groupId?{...x,bannerUrl:publicUrl}:x));
+  };
+
+  const submitPost = async() => {
+    if (!newPost.trim()) return;
+    const post={id:`local-${Date.now()}`,group_id:groupId,user_id:myProfile.id,content:newPost.trim(),created_at:new Date().toISOString(),profiles:{username:myProfile.username,avatar_initials:myProfile.avatar}};
+    setPosts(p=>[post,...p]); setNewPost("");
+    await supabase.from("group_posts").insert({group_id:groupId,user_id:myProfile.id,content:post.content}).catch(()=>{});
+  };
+
+  const submitEvent = async() => {
+    if (!eventForm.title.trim()||!eventForm.date) return;
+    const ev={id:`local-${Date.now()}`,group_id:groupId,title:eventForm.title,event_date:eventForm.date,location:eventForm.location,is_public:eventForm.isPublic,created_at:new Date().toISOString()};
+    setEvents(e=>[...e,ev]); setShowNewEvent(false); setEventForm({title:"",date:"",location:"",isPublic:true});
+    await supabase.from("group_events").insert({group_id:groupId,title:ev.title,event_date:ev.event_date,location:ev.location,is_public:ev.is_public}).catch(()=>{});
+  };
+
+  const fmt=(ts)=>{if(!ts)return"";const d=new Date(ts),now=new Date(),diff=now-d;if(diff<60000)return"just now";if(diff<3600000)return`${Math.floor(diff/60000)}m ago`;if(diff<86400000)return d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});return d.toLocaleDateString([],{month:"short",day:"numeric"});};
+  const fmtDate=(ds)=>{if(!ds)return{day:"?",mon:"?"};const d=new Date(ds);return{day:d.getDate(),mon:d.toLocaleString("default",{month:"short"}).toUpperCase()};};
+
+  return (
+    <div className="fade">
+      <button className="back-btn" onClick={onBack}>← Groups</button>
+
+      {/* Banner */}
+      <div style={{margin:"0 16px 0",borderRadius:"var(--radius-lg) var(--radius-lg) 0 0",overflow:"hidden",border:"1px solid var(--border)",borderBottom:"none"}}>
+        <input ref={bannerRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleBannerSelect}/>
+        {bannerPreview
+          ? <img src={bannerPreview} className="group-banner" alt="banner" onClick={()=>isAdmin&&bannerRef.current?.click()} style={{cursor:isAdmin?"pointer":"default"}}/>
+          : <div className="group-banner-empty" style={{borderRadius:"var(--radius-lg) var(--radius-lg) 0 0"}} onClick={()=>isAdmin&&bannerRef.current?.click()}>
+              {isAdmin ? <>📷 Add group banner</> : <>&nbsp;</>}
+            </div>
+        }
+      </div>
+
+      {/* Group header */}
+      <div style={{margin:"0 16px",background:"var(--s2)",borderRadius:"0 0 var(--radius-lg) var(--radius-lg)",border:"1px solid var(--border)",borderTop:"none",padding:"14px 16px 12px",marginBottom:8}}>
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:6}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:22,fontWeight:700,color:"var(--text)",fontFamily:"var(--font-display)",letterSpacing:.5,borderLeft:`3px solid ${theme}`,paddingLeft:10}}>
+              {g.name}
+            </div>
+            {g.desc&&<div style={{fontSize:12,color:"var(--muted)",marginTop:4,paddingLeft:10}}>{g.desc}</div>}
+          </div>
+          <span className={`gc-type-pill ${g.type}`}>{g.type==="private"?"Private":"Public"}</span>
+        </div>
+        {g.tags?.length>0&&<div className="tags" style={{marginBottom:8,paddingLeft:10}}>{g.tags.map(t=><span key={t} className="tag">{t}</span>)}</div>}
+        <div style={{display:"flex",gap:8,paddingLeft:10}}>
+          {inGroup&&<button className="btn btn-secondary btn-sm" onClick={()=>openChat(groupId)}>💬 Chat</button>}
+          {inGroup&&isAdmin&&<button className="btn btn-primary btn-sm" style={{background:theme,borderColor:theme}} onClick={onCreateLobbyForGroup}>📡 Start Lobby</button>}
+          {!inGroup&&<button className="btn btn-primary btn-sm" style={{background:theme}}>Join Group</button>}
+        </div>
+      </div>
+
+      {/* Active lobbies for this group */}
+      {activeLobbies.length>0&&(
+        <div style={{margin:"0 16px 8px",padding:"10px 12px",background:"rgba(230,26,26,.06)",border:"1px solid rgba(230,26,26,.2)",borderRadius:"var(--radius-md)",display:"flex",alignItems:"center",gap:8}}>
+          <span className="live-dot"/>
+          <span style={{fontSize:12,fontWeight:600,color:theme}}>{activeLobbies.length} active {activeLobbies.length===1?"lobby":"lobbies"} running</span>
+        </div>
+      )}
+
+      {/* Sub-tabs */}
+      <div className="pills" style={{marginBottom:8}}>
+        {["Posts","Events","Members"].map(t=>(
+          <button key={t} className={`pill ${subTab===t?"on":""}`}
+            style={subTab===t?{background:theme,borderColor:theme}:{}}
+            onClick={()=>setSubTab(t)}>{t}</button>
+        ))}
+      </div>
+
+      {/* POSTS */}
+      {subTab==="Posts"&&(<>
+        {inGroup&&(
+          <div style={{margin:"0 16px 10px",display:"flex",gap:8}}>
+            <div className="av s32 me">{myProfile.avatar}</div>
+            <div style={{flex:1,display:"flex",gap:6}}>
+              <input className="inp" placeholder="Post something to the group…" value={newPost} onChange={e=>setNewPost(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&submitPost()} style={{flex:1}}/>
+              <button className="btn btn-primary btn-sm" style={{background:theme}} onClick={submitPost}>Post</button>
+            </div>
+          </div>
+        )}
+        {posts.length===0&&<div className="empty">No posts yet. Be the first to post.</div>}
+        {posts.map(p=>(
+          <div key={p.id} className="post-card">
+            <div className="post-author">
+              <div className="av s28">{p.profiles?.avatar_initials||"?"}</div>
+              <div>
+                <div style={{fontSize:12,fontWeight:600,color:theme}}>@{p.profiles?.username||"?"}</div>
+                <div style={{fontSize:10,color:"var(--muted2)"}}>{fmt(p.created_at)}</div>
+              </div>
+            </div>
+            <div className="post-text">{p.content}</div>
+          </div>
+        ))}
+      </>)}
+
+      {/* EVENTS */}
+      {subTab==="Events"&&(<>
+        {isAdmin&&!showNewEvent&&(
+          <div style={{padding:"0 16px 10px"}}>
+            <button className="btn btn-primary btn-sm" style={{background:theme}} onClick={()=>setShowNewEvent(true)}>+ Create Event</button>
+          </div>
+        )}
+        {showNewEvent&&(
+          <div className="card" style={{marginBottom:10}}>
+            <div style={{fontSize:14,fontWeight:600,marginBottom:10}}>New Event</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              <input className="inp" placeholder="Event title" value={eventForm.title} onChange={e=>setEventForm({...eventForm,title:e.target.value})}/>
+              <input className="inp" type="datetime-local" value={eventForm.date} onChange={e=>setEventForm({...eventForm,date:e.target.value})}/>
+              <input className="inp" placeholder="Location (optional)" value={eventForm.location} onChange={e=>setEventForm({...eventForm,location:e.target.value})}/>
+              <div className="seg">
+                <button className={`seg-opt ${eventForm.isPublic?"on":""}`} onClick={()=>setEventForm({...eventForm,isPublic:true})}>Public</button>
+                <button className={`seg-opt ${!eventForm.isPublic?"on":""}`} onClick={()=>setEventForm({...eventForm,isPublic:false})}>Private</button>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button className="btn btn-primary btn-sm" style={{background:theme}} onClick={submitEvent}>Create</button>
+                <button className="btn btn-secondary btn-sm" onClick={()=>setShowNewEvent(false)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {events.length===0&&<div className="empty">No events scheduled.</div>}
+        {events.map(ev=>{
+          const{day,mon}=fmtDate(ev.event_date);
+          return (
+            <div key={ev.id} className="event-card">
+              <div className="event-date" style={{background:`${theme}18`,borderColor:`${theme}44`}}>
+                <div className="event-date-day" style={{color:theme}}>{day}</div>
+                <div className="event-date-mon">{mon}</div>
+              </div>
+              <div className="event-info">
+                <div className="event-title">{ev.title}</div>
+                {ev.location&&<div className="event-sub">📍 {ev.location}</div>}
+              </div>
+              <span className="event-priv" style={{background:ev.is_public?"rgba(0,192,96,.1)":"rgba(230,26,26,.1)",color:ev.is_public?"var(--green)":theme,border:`1px solid ${ev.is_public?"rgba(0,192,96,.2)":theme+"44"}`}}>
+                {ev.is_public?"Public":"Private"}
+              </span>
+            </div>
+          );
+        })}
+      </>)}
+
+      {/* MEMBERS */}
+      {subTab==="Members"&&(
+        <div className="list-card" style={{margin:"0 16px 14px"}}>
+          {members.map(m=>(
+            <div key={m.id} className="list-item" onClick={()=>m.id!==myProfile.id&&openPlayer(m.id)}>
+              <div className={`av s32 ${m.id===myProfile.id?"me":""}`}>{m.avatar}</div>
+              <div className="list-item-info">
+                <div className="list-item-title">@{m.username}{m.id===myProfile.id&&<span style={{fontSize:10,color:theme,marginLeft:6}}>YOU</span>}{m.id===g.admin&&<span style={{fontSize:9,color:"var(--muted2)",marginLeft:4,background:"var(--s3)",padding:"1px 5px",borderRadius:3}}>ADMIN</span>}</div>
+                {memberCars[m.id]&&<div className="list-item-sub" style={{fontFamily:"var(--font-mono)",fontSize:10}}>{memberCars[m.id]}</div>}
+              </div>
+              <TierBadge wins={tw(m.wins)}/>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{height:20}}/>
     </div>
   );
@@ -2148,6 +2484,12 @@ function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateG
 
   return (
     <div>
+      {/* Profile banner */}
+      {myProfile.bannerUrl
+        ? <img src={myProfile.bannerUrl} alt="banner" className="profile-banner"/>
+        : <div className="profile-banner-empty" onClick={onEdit}><span style={{fontSize:16}}>🖼</span> Add profile banner</div>
+      }
+
       <div className="pg-hdr" style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
         <div>
           <div className="pg-title">Profile</div>
@@ -2320,9 +2662,12 @@ function EditProfile({ myProfile, setMyProfile, myCar, setMyCar, onBack }) {
   const [carForm, setCarForm] = useState({...myCar});
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(myCar.photoUrl||"");
+  const [bannerFile, setBannerFile] = useState(null);
+  const [bannerPreview, setBannerPreview] = useState(myProfile.bannerUrl||"");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const fileRef = useRef(null);
+  const bannerRef = useRef(null);
 
   const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
   const setC=(k,v)=>setCarForm(c=>({...c,[k]:v}));
@@ -2330,6 +2675,11 @@ function EditProfile({ myProfile, setMyProfile, myCar, setMyCar, onBack }) {
   const handlePhotoSelect=(e)=>{
     const file=e.target.files?.[0]; if(!file) return;
     setPhotoFile(file); setPhotoPreview(URL.createObjectURL(file));
+  };
+
+  const handleBannerSelect=(e)=>{
+    const file=e.target.files?.[0]; if(!file) return;
+    setBannerFile(file); setBannerPreview(URL.createObjectURL(file));
   };
 
   const handleSave=async()=>{
@@ -2344,10 +2694,20 @@ function EditProfile({ myProfile, setMyProfile, myCar, setMyCar, onBack }) {
         const{data:{publicUrl}}=supabase.storage.from("car-photos").getPublicUrl(path);
         photoUrl=publicUrl;
       }
+      let bannerUrl=myProfile.bannerUrl||"";
+      if (bannerFile&&myProfile.id) {
+        const ext=bannerFile.name.split(".").pop()||"jpg";
+        const path=`${myProfile.id}/banner-${Date.now()}.${ext}`;
+        const{error:upErr}=await supabase.storage.from("car-photos").upload(path,bannerFile,{upsert:true});
+        if(upErr) throw upErr;
+        const{data:{publicUrl}}=supabase.storage.from("car-photos").getPublicUrl(path);
+        bannerUrl=publicUrl;
+      }
       if (myProfile.id) {
         await supabase.from("profiles").update({
           display_name:form.displayName, show_real_name:form.showRealName,
           city:form.city, instagram:form.instagram, avatar_initials:form.avatar,
+          banner_url:bannerUrl||null,
         }).eq("id",myProfile.id);
       }
       let newCarId=carForm.id;
@@ -2365,7 +2725,7 @@ function EditProfile({ myProfile, setMyProfile, myCar, setMyCar, onBack }) {
           newCarId=inserted?.id||null;
         }
       }
-      setMyProfile({...form,instagram:form.instagram,socials:{...form.socials,instagram:form.instagram}});
+      setMyProfile({...form,instagram:form.instagram,socials:{...form.socials,instagram:form.instagram},bannerUrl});
       setMyCar({...carForm,id:newCarId,photoUrl});
       onBack();
     } catch(err){ console.error("Save error:",err); setError("Failed to save. Check your connection."); }
@@ -2378,6 +2738,17 @@ function EditProfile({ myProfile, setMyProfile, myCar, setMyCar, onBack }) {
       <div className="pg-hdr" style={{paddingTop:0}}>
         <div className="pg-title">Edit Profile</div>
         <div className="pg-sub">Update your information</div>
+      </div>
+
+      {/* Profile banner */}
+      <div className="sec-lbl">Profile Banner</div>
+      <div style={{margin:"0 16px 8px",borderRadius:"var(--radius-lg)",overflow:"hidden",border:"1px solid var(--border)",cursor:"pointer"}} onClick={()=>bannerRef.current?.click()}>
+        <input ref={bannerRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleBannerSelect}/>
+        {bannerPreview
+          ? <img src={bannerPreview} style={{width:"100%",height:100,objectFit:"cover",display:"block"}} alt="banner"/>
+          : <div className="profile-banner-empty" style={{height:70,borderRadius:"var(--radius-lg)",fontSize:12}}><span style={{fontSize:16}}>🖼</span> Tap to add a profile banner</div>
+        }
+        {bannerPreview&&<div style={{textAlign:"center",padding:"6px 0",fontSize:11,color:"var(--muted2)",background:"var(--s2)"}}>Tap to change banner</div>}
       </div>
 
       {/* Car section */}

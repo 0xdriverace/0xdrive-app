@@ -146,10 +146,7 @@ export default function AuthPage({ initialMode = "login" }) {
       <style>{AUTH_CSS}</style>
       <div className="auth-wrap">
         <div className="auth-logo">
-          <div className="auth-logo-lockup">
-            <div className="auth-logo-icon"><span className="auth-logo-icon-text">0X</span></div>
-            <span className="auth-logo-race">RACE</span>
-          </div>
+          <img src="/59996.jpg" alt="0xRace" style={{height:48,width:"auto",objectFit:"contain",borderRadius:6,marginBottom:8}} />
           <div className="auth-logo-sub">Powered by 0xotics</div>
         </div>
 

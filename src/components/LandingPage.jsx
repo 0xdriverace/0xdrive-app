@@ -138,8 +138,7 @@ export default function LandingPage({ onSignUp, onLogin }) {
       {/* NAV */}
       <nav className="lp-nav">
         <div className="lp-logo">
-          <div className="lp-logo-icon"><span className="lp-logo-icon-text">0X</span></div>
-          <span className="lp-logo-text">RACE</span>
+          <img src="/59996.jpg" alt="0xRace" style={{height:32,width:"auto",objectFit:"contain",borderRadius:4}} />
         </div>
         <div className="lp-nav-actions">
           <button className="lp-nav-login" onClick={onLogin}>Log In</button>
@@ -292,9 +291,8 @@ export default function LandingPage({ onSignUp, onLogin }) {
         <div className="lp-footer">
           <div className="lp-footer-inner">
             <div className="lp-footer-brand">
-              <div className="lp-logo" style={{marginBottom:8}}>
-                <div className="lp-logo-icon"><span className="lp-logo-icon-text">0X</span></div>
-                <span className="lp-logo-text">RACE</span>
+              <div style={{marginBottom:8}}>
+                <img src="/59996.jpg" alt="0xRace" style={{height:28,width:"auto",objectFit:"contain",borderRadius:3}} />
               </div>
               <p>A live driving community app. Find your crew, pick a lobby, make the streets feel like a game.</p>
             </div>
