@@ -531,8 +531,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);min-hei
 
 /* ─── LOGO COMPONENT ─────────────────────────────────────── */
 function Logo({ sidebarVariant = false }) {
-  const h = sidebarVariant ? 32 : 38;
-  const w = Math.round(h * 1.6);
+  const h = sidebarVariant ? 36 : 44;
+  const w = Math.round(h * 1.7);
   return (
     <img
       src={logoImg}
@@ -544,6 +544,7 @@ function Logo({ sidebarVariant = false }) {
         objectPosition: "50% 46%",
         display: "block",
         flexShrink: 0,
+        mixBlendMode: "screen",
       }}
     />
   );
