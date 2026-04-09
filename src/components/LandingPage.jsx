@@ -1,6 +1,6 @@
 import logoImg from "../assets/logo-transparent.png";
 
-const CAR_PHOTO = "https://images.unsplash.com/photo-1580274455191-1c62238fa1c9?auto=format&fit=crop&w=1920&q=80";
+const CAR_PHOTO = "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1920&q=80";
 
 const LANDING_CSS = `
 @import url('https://fonts.cdnfonts.com/css/pricedown');
@@ -185,7 +185,7 @@ export default function LandingPage({ onSignUp, onLogin }) {
           <a className="lp-btn-secondary" href="#features">See What's Inside</a>
         </div>
         <p className="lp-hero-member-note">
-          Free for 0xdrive Tier 2 members &nbsp;·&nbsp; <span onClick={onSignUp} style={{cursor:"pointer"}}>$45/mo otherwise</span>
+          Included with 0xdrive Tier 2 &nbsp;·&nbsp; $45 one-time for everyone else
         </p>
         <div className="lp-hero-stats">
           <div className="lp-stat">
@@ -292,14 +292,14 @@ export default function LandingPage({ onSignUp, onLogin }) {
           <div className="lp-section-label">Access</div>
           <h2 className="lp-section-title">Made for 0xdrive members</h2>
           <p style={{fontSize:15,color:"var(--muted)",maxWidth:520,margin:"0 auto",lineHeight:1.7}}>
-            0xRace is a companion app for the 0xdrive community. Tier 2 members get full access included — or jump in for $45/month.
+            0xRace is built for the 0xdrive community. If you're a Tier 2 member, you're already in. Everyone else gets full access for a one-time $45 fee.
           </p>
           <div className="lp-pricing-cards">
             <div className="lp-pricing-card featured">
               <div className="lp-pricing-badge member">0xdrive Tier 2</div>
-              <div className="lp-pricing-price">$0<span>/mo</span></div>
-              <div className="lp-pricing-title">Included with membership</div>
-              <div className="lp-pricing-sub">Full 0xRace access comes with your 0xdrive Tier 2 membership. No extra charge.</div>
+              <div className="lp-pricing-price">$0</div>
+              <div className="lp-pricing-title">Included with Tier 2</div>
+              <div className="lp-pricing-sub">Already an 0xdrive Tier 2 member? 0xRace is part of your membership. Just log in and go.</div>
               <div className="lp-pricing-features">
                 <div className="lp-pricing-feature">All live lobbies</div>
                 <div className="lp-pricing-feature">Groups & crew chat</div>
@@ -310,9 +310,9 @@ export default function LandingPage({ onSignUp, onLogin }) {
             </div>
             <div className="lp-pricing-card">
               <div className="lp-pricing-badge access">Standard Access</div>
-              <div className="lp-pricing-price">$45<span>/mo</span></div>
-              <div className="lp-pricing-title">Open access</div>
-              <div className="lp-pricing-sub">Not a Tier 2 member? You can still get full 0xRace access for $45/month.</div>
+              <div className="lp-pricing-price">$45<span style={{fontSize:18,fontFamily:"var(--font-sans)",fontWeight:400,color:"var(--muted)",letterSpacing:0}}> one-time</span></div>
+              <div className="lp-pricing-title">One-time access</div>
+              <div className="lp-pricing-sub">Not on 0xdrive yet? Pay once and get full access to everything 0xRace has to offer.</div>
               <div className="lp-pricing-features">
                 <div className="lp-pricing-feature">All live lobbies</div>
                 <div className="lp-pricing-feature">Groups & crew chat</div>
