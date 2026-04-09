@@ -1,3 +1,5 @@
+import logoImg from "../assets/logo.jpg";
+
 const LANDING_CSS = `
 @import url('https://fonts.cdnfonts.com/css/pricedown');
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -138,7 +140,7 @@ export default function LandingPage({ onSignUp, onLogin }) {
       {/* NAV */}
       <nav className="lp-nav">
         <div className="lp-logo">
-          <img src="/59996.jpg" alt="0xRace" style={{height:32,width:"auto",objectFit:"contain",borderRadius:4}} />
+          <img src={logoImg} alt="0xRace" style={{height:32,width:"auto",objectFit:"contain",borderRadius:4}} />
         </div>
         <div className="lp-nav-actions">
           <button className="lp-nav-login" onClick={onLogin}>Log In</button>
@@ -292,7 +294,7 @@ export default function LandingPage({ onSignUp, onLogin }) {
           <div className="lp-footer-inner">
             <div className="lp-footer-brand">
               <div style={{marginBottom:8}}>
-                <img src="/59996.jpg" alt="0xRace" style={{height:28,width:"auto",objectFit:"contain",borderRadius:3}} />
+                <img src={logoImg} alt="0xRace" style={{height:28,width:"auto",objectFit:"contain",borderRadius:3}} />
               </div>
               <p>A live driving community app. Find your crew, pick a lobby, make the streets feel like a game.</p>
             </div>
