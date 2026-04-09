@@ -531,23 +531,31 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);min-hei
 
 /* ─── LOGO COMPONENT ─────────────────────────────────────── */
 function Logo({ sidebarVariant = false }) {
-  const h = sidebarVariant ? 36 : 44;
-  const w = Math.round(h * 1.7);
-  return (
-    <img
-      src={logoImg}
-      alt="0x"
-      style={{
-        width: w,
-        height: h,
-        objectFit: "cover",
-        objectPosition: "50% 46%",
-        display: "block",
-        flexShrink: 0,
-        mixBlendMode: "screen",
-      }}
-    />
-  );
+  const canvasRef = useRef(null);
+  const height = sidebarVariant ? 34 : 42;
+  const w = Math.round(height * 1.5);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = w * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = w + "px";
+    canvas.style.height = height + "px";
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, 0, 580, 1320, 1380, 0, 0, w, height);
+      const d = ctx.getImageData(0, 0, w * dpr, height * dpr);
+      for (let i = 0; i < d.data.length; i += 4) {
+        if ((d.data[i] + d.data[i+1] + d.data[i+2]) / 3 < 40) d.data[i+3] = 0;
+      }
+      ctx.putImageData(d, 0, 0);
+    };
+    img.src = logoImg;
+  }, [height, w]);
+  return <canvas ref={canvasRef} style={{display:"block", flexShrink:0}} />;
 }
 
 /* ─── NAV ICONS ──────────────────────────────────────────── */
