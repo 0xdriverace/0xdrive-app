@@ -879,15 +879,34 @@ export default function App() {
 
   const loadData = async (userId) => {
     try {
-      const [profileRes, usersRes, groupsRes, myCarRes] = await Promise.all([
+      const [profileRes, usersRes, groupsRes, myCarRes, allCarsRes, friendsRes] = await Promise.all([
         supabase.from("profiles").select("*").eq("id", userId).single(),
         supabase.from("profiles").select("*").neq("id", userId),
         supabase.from("groups").select("*, group_members(user_id, role, status)"),
         supabase.from("user_cars").select("*").eq("user_id", userId).eq("is_primary", true).maybeSingle(),
+        supabase.from("user_cars").select("user_id,year,make,model").eq("is_primary", true),
+        supabase.from("friends").select("user_id,friend_id").or(`user_id.eq.${userId},friend_id.eq.${userId}`).eq("status","accepted").catch(()=>({data:[]})),
       ]);
 
       if (profileRes.data) setMyProfile(profileFromRow(profileRes.data));
-      if (usersRes.data) setAllUsers(usersRes.data.map(profileFromRow));
+
+      // Build car map for enriching user profiles
+      const carMap = {};
+      if (allCarsRes.data) allCarsRes.data.forEach(c=>{ carMap[c.user_id]=c; });
+
+      if (usersRes.data) setAllUsers(usersRes.data.map(row => {
+        const p = profileFromRow(row);
+        const c = carMap[row.id];
+        if (c) { p.car = `${c.make} ${c.model}`; p.year = c.year?.toString()||""; }
+        return p;
+      }));
+
+      // Load accepted friends
+      if (friendsRes.data?.length) {
+        const friendIds = friendsRes.data.map(f => f.user_id===userId ? f.friend_id : f.user_id);
+        setFriends(friendIds);
+      }
+
       if (groupsRes.data) {
         setGroups(groupsRes.data.map(g => ({
           id: g.id, name: g.name, desc: g.description||"",
@@ -997,7 +1016,11 @@ export default function App() {
   const myId = session.user.id;
   const isFriend = id => friends.includes(id);
   const sentFR = id => friendReqs.includes(id);
-  const addFR = id => { if (!sentFR(id)) setFriendReqs(r=>[...r,id]); };
+  const addFR = async (id) => {
+    if (sentFR(id)) return;
+    setFriendReqs(r=>[...r,id]);
+    await supabase.from("friends").upsert({user_id:myId,friend_id:id,status:"accepted"},{onConflict:"user_id,friend_id"}).catch(()=>{});
+  };
   const isInGroup = gid => groups.find(g=>g.id===gid)?.memberIds.includes(myId);
   const sentGR = gid => groupReqs.includes(gid);
   const joinGroup = async (gid) => {
@@ -1008,17 +1031,24 @@ export default function App() {
   const reqGroup = gid => { if (!sentGR(gid)) setGroupReqs(r=>[...r,gid]); };
   const isInLobby = lid => lobbies.find(l=>l.id===lid)?.memberIds.includes(myId);
   const sentLR = lid => lobbyReqs.includes(lid);
-  const joinLobby = (lid) => {
+  const joinLobby = async (lid) => {
     setLobbies(ls=>ls.map(l=>l.id===lid?{...l,memberIds:[...l.memberIds,myId]}:l));
+    await supabase.from("lobby_members").upsert({lobby_id:lid,user_id:myId,status:"active"},{onConflict:"lobby_id,user_id"}).catch(()=>{});
   };
-  const reqLobby = (lid) => {
-    if (!sentLR(lid)) {
-      setLobbyReqs(r=>[...r,lid]);
-      setLobbies(ls=>ls.map(l=>l.id===lid?{...l,pendingRequests:[...(l.pendingRequests||[]),myId]}:l));
-    }
+  const reqLobby = async (lid) => {
+    if (sentLR(lid)) return;
+    setLobbyReqs(r=>[...r,lid]);
+    setLobbies(ls=>ls.map(l=>l.id===lid?{...l,pendingRequests:[...(l.pendingRequests||[]),myId]}:l));
+    await supabase.from("lobby_members").upsert({lobby_id:lid,user_id:myId,status:"pending"},{onConflict:"lobby_id,user_id"}).catch(()=>{});
   };
-  const approveLobby = (lid, uid) => setLobbies(ls=>ls.map(l=>l.id===lid?{...l,memberIds:[...l.memberIds,uid],pendingRequests:l.pendingRequests.filter(r=>r!==uid)}:l));
-  const denyLobby = (lid, uid) => setLobbies(ls=>ls.map(l=>l.id===lid?{...l,pendingRequests:l.pendingRequests.filter(r=>r!==uid)}:l));
+  const approveLobby = async (lid, uid) => {
+    setLobbies(ls=>ls.map(l=>l.id===lid?{...l,memberIds:[...l.memberIds,uid],pendingRequests:l.pendingRequests.filter(r=>r!==uid)}:l));
+    await supabase.from("lobby_members").update({status:"active"}).eq("lobby_id",lid).eq("user_id",uid).catch(()=>{});
+  };
+  const denyLobby = async (lid, uid) => {
+    setLobbies(ls=>ls.map(l=>l.id===lid?{...l,pendingRequests:l.pendingRequests.filter(r=>r!==uid)}:l));
+    await supabase.from("lobby_members").delete().eq("lobby_id",lid).eq("user_id",uid).catch(()=>{});
+  };
 
   const pendingCount = groups.reduce((a,g)=>a+(g.pendingRequests?.length||0),0)
     + lobbies.reduce((a,l)=>a+(l.pendingRequests?.length||0),0);
@@ -2404,7 +2434,11 @@ function RanksView({ openPlayer, myProfile, allUsers, myCar }) {
       let q=supabase.from("race_times").select("*, profiles(username,avatar_initials,city), user_cars(year,make,model,trim,build_stage)")
         .eq("category",cat).order("time_seconds",{ascending:true}).limit(300);
       if (classFilter!=="All") q=q.eq("car_class",classFilter);
-      if (locScope==="By City"&&myProfile.city) q=q.ilike("profiles.city",`%${myProfile.city.split(",")[0]}%`);
+      if (locScope==="By City"&&myProfile.city) q=q.ilike("profiles.city",`%${myProfile.city.split(",")[0].trim()}%`);
+      if (locScope==="By State"&&myProfile.city) {
+        const parts=myProfile.city.split(","); const state=(parts[1]||"").trim().split(" ")[0];
+        if (state) q=q.ilike("profiles.city",`%, ${state}%`);
+      }
       const{data}=await q;
       if (cancelled||!data) return;
       const best={};
