@@ -4,7 +4,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import AuthPage from "./components/AuthPage.jsx";
 import LandingPage from "./components/LandingPage.jsx";
-import logoImg from "./assets/logo-transparent.png";
+import logoImg from "./assets/logo.png";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -1025,7 +1025,7 @@ export default function App() {
   const showNav = !playerView && !chatGroupId && !lobbyDetailId && !groupDetailId && !editingProfile;
 
   const TABS = [
-    {name:"Lobbies"}, {name:"Groups"}, {name:"Map"}, {name:"Ranks"}, {name:"Profile"},
+    {name:"Lobbies"}, {name:"Groups"}, {name:"Search"}, {name:"Map"}, {name:"Ranks"}, {name:"Profile"},
   ];
   const activeTab = showNav ? tab : null;
   const goTab = (name) => { setTab(name); setPlayerView(null); setChatGroupId(null); setLobbyDetailId(null); setGroupDetailId(null); setEditingProfile(false); };
@@ -1107,6 +1107,12 @@ export default function App() {
             ) : tab==="Map" ? (
               <MapView groups={groups} openPlayer={setPlayerView}
                 myProfile={myProfile} setMyProfile={setMyProfile} allUsers={allUsers} lobbies={lobbies}/>
+            ) : tab==="Search" ? (
+              <SearchView isFriend={isFriend} sentFR={sentFR} addFR={addFR}
+                openPlayer={setPlayerView} groups={groups} isInGroup={isInGroup}
+                sentGR={sentGR} joinGroup={joinGroup} reqGroup={reqGroup}
+                allUsers={allUsers} myProfile={myProfile} lobbies={lobbies}
+                openLobby={setLobbyDetailId}/>
             ) : tab==="Ranks" ? (
               <RanksView openPlayer={setPlayerView} myProfile={myProfile} allUsers={allUsers} myCar={myCar}/>
             ) : (
