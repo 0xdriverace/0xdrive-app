@@ -1,4 +1,4 @@
-import logoImg from "../assets/logo-transparent.png";
+import logoImg from "../assets/logo.png";
 
 const CAR_PHOTO = "/g80.JPG";
 

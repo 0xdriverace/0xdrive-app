@@ -1,4 +1,5 @@
 import { useState } from "react";
+import logoImg from "../assets/logo.png";
 import { supabase } from "../lib/supabase.js";
 
 const AUTH_CSS = `
@@ -146,7 +147,7 @@ export default function AuthPage({ initialMode = "login" }) {
       <style>{AUTH_CSS}</style>
       <div className="auth-wrap">
         <div className="auth-logo">
-          <img src="/59996.jpg" alt="0xRace" style={{height:48,width:"auto",objectFit:"contain",borderRadius:6,marginBottom:8}} />
+          <img src={logoImg} alt="0xRace" style={{height:48,width:"auto",objectFit:"contain",marginBottom:8}} />
           <div className="auth-logo-sub">Powered by 0xotics</div>
         </div>
 
