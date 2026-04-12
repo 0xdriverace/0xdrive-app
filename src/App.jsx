@@ -1974,9 +1974,9 @@ function GroupDetail({ groupId, groups, setGroups, onBack, openPlayer, openChat,
   const handleBannerSelect = async(e) => {
     const file=e.target.files?.[0]; if(!file) return;
     const preview=URL.createObjectURL(file); setBannerPreview(preview);
-    const ext=file.name.split(".").pop()||"jpg";
-    const path=`groups/${groupId}/${Date.now()}.${ext}`;
-    const{error:upErr}=await supabase.storage.from("car-photos").upload(path,file,{upsert:true});
+    const compressed=await compressImage(file,1800);
+    const path=`groups/${groupId}/${Date.now()}.jpg`;
+    const{error:upErr}=await supabase.storage.from("car-photos").upload(path,compressed,{upsert:true,contentType:"image/jpeg"});
     if(upErr){console.error("Banner upload failed",upErr);return;}
     const{data:{publicUrl}}=supabase.storage.from("car-photos").getPublicUrl(path);
     const{error:dbErr}=await supabase.from("groups").update({banner_url:publicUrl}).eq("id",groupId);
@@ -2824,6 +2824,26 @@ function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateG
 }
 
 /* ─── EDIT PROFILE ───────────────────────────────────────── */
+function compressImage(file, maxPx=1400, quality=0.82) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let {width:w, height:h} = img;
+      if (w > maxPx || h > maxPx) {
+        if (w > h) { h = Math.round(h * maxPx / w); w = maxPx; }
+        else { w = Math.round(w * maxPx / h); h = maxPx; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), {type:"image/jpeg"})), "image/jpeg", quality);
+    };
+    img.src = url;
+  });
+}
+
 function EditProfile({ myProfile, setMyProfile, myCar, setMyCar, userId, onBack }) {
   const [form, setForm] = useState({...myProfile});
   const [carForm, setCarForm] = useState({...myCar});
@@ -2855,18 +2875,18 @@ function EditProfile({ myProfile, setMyProfile, myCar, setMyCar, userId, onBack 
     try {
       let photoUrl=carForm.photoUrl;
       if (photoFile) {
-        const ext=photoFile.name.split(".").pop()||"jpg";
-        const path=`${userId}/${Date.now()}.${ext}`;
-        const{error:upErr}=await supabase.storage.from("car-photos").upload(path,photoFile,{upsert:true});
+        const compressed=await compressImage(photoFile,1400);
+        const path=`${userId}/${Date.now()}.jpg`;
+        const{error:upErr}=await supabase.storage.from("car-photos").upload(path,compressed,{upsert:true,contentType:"image/jpeg"});
         if(upErr) throw upErr;
         const{data:{publicUrl}}=supabase.storage.from("car-photos").getPublicUrl(path);
         photoUrl=publicUrl;
       }
       let bannerUrl=myProfile.bannerUrl||"";
       if (bannerFile) {
-        const ext=bannerFile.name.split(".").pop()||"jpg";
-        const path=`${userId}/banner-${Date.now()}.${ext}`;
-        const{error:upErr}=await supabase.storage.from("car-photos").upload(path,bannerFile,{upsert:true});
+        const compressed=await compressImage(bannerFile,1800);
+        const path=`${userId}/banner-${Date.now()}.jpg`;
+        const{error:upErr}=await supabase.storage.from("car-photos").upload(path,compressed,{upsert:true,contentType:"image/jpeg"});
         if(upErr) throw upErr;
         const{data:{publicUrl}}=supabase.storage.from("car-photos").getPublicUrl(path);
         bannerUrl=publicUrl;
