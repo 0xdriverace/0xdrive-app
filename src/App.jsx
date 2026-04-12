@@ -2914,7 +2914,7 @@ function EditProfile({ myProfile, setMyProfile, myCar, setMyCar, userId, onBack 
           newCarId=inserted?.id||null;
         }
       }
-      setMyProfile(p=>({...p,...form,id:userId,instagram:form.instagram,socials:{...form.socials,instagram:form.instagram},bannerUrl}));
+      setMyProfile(p=>({...p,displayName:form.displayName,showRealName:form.showRealName,city:form.city,instagram:form.instagram,avatar:form.avatar,socials:{...p.socials,instagram:form.instagram},bannerUrl}));
       setMyCar({...carForm,id:newCarId,photoUrl});
       onBack();
     } catch(err){ console.error("Save error:",err); setError(err?.message||"Failed to save. Check your connection."); }
