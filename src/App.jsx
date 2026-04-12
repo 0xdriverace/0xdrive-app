@@ -957,7 +957,8 @@ export default function App() {
       created_by: myId, theme_color: form.theme||"#e61a1a",
     }).select().single();
     if (error||!grp) { console.error("Create group error:", error); return; }
-    await supabase.from("group_members").insert({ group_id:grp.id, user_id:myId, role:"owner", status:"active" });
+    const{error:memErr}=await supabase.from("group_members").insert({ group_id:grp.id, user_id:myId, role:"owner", status:"active" });
+    if(memErr) console.error("group_members insert error:",memErr);
     setGroups(gs=>[...gs, {
       id:grp.id, name:grp.name, desc:grp.description||"",
       type:grp.is_private?"private":"open", max:grp.max_members,
@@ -1019,35 +1020,41 @@ export default function App() {
   const addFR = async (id) => {
     if (sentFR(id)) return;
     setFriendReqs(r=>[...r,id]);
-    await supabase.from("friends").upsert({user_id:myId,friend_id:id,status:"accepted"},{onConflict:"user_id,friend_id"}).catch(()=>{});
+    const{error}=await supabase.from("friends").upsert({user_id:myId,friend_id:id,status:"accepted"},{onConflict:"user_id,friend_id"});
+    if(error) console.error("addFR error:",error);
   };
   const isInGroup = gid => groups.find(g=>g.id===gid)?.memberIds.includes(myId);
   const sentGR = gid => groupReqs.includes(gid);
   const joinGroup = async (gid) => {
     if (groups.find(g=>g.id===gid)?.memberIds.includes(myId)) return;
     setGroups(gs=>gs.map(g=>g.id===gid?{...g,memberIds:[...g.memberIds,myId]}:g));
-    await supabase.from("group_members").upsert({group_id:gid,user_id:myId,role:"member",status:"active"},{onConflict:"group_id,user_id"});
+    const{error}=await supabase.from("group_members").upsert({group_id:gid,user_id:myId,role:"member",status:"active"},{onConflict:"group_id,user_id"});
+    if(error) console.error("joinGroup error:",error);
   };
   const reqGroup = gid => { if (!sentGR(gid)) setGroupReqs(r=>[...r,gid]); };
   const isInLobby = lid => lobbies.find(l=>l.id===lid)?.memberIds.includes(myId);
   const sentLR = lid => lobbyReqs.includes(lid);
   const joinLobby = async (lid) => {
     setLobbies(ls=>ls.map(l=>l.id===lid?{...l,memberIds:[...l.memberIds,myId]}:l));
-    await supabase.from("lobby_members").upsert({lobby_id:lid,user_id:myId,status:"active"},{onConflict:"lobby_id,user_id"}).catch(()=>{});
+    const{error}=await supabase.from("lobby_members").upsert({lobby_id:lid,user_id:myId,status:"active"},{onConflict:"lobby_id,user_id"});
+    if(error) console.error("joinLobby error:",error);
   };
   const reqLobby = async (lid) => {
     if (sentLR(lid)) return;
     setLobbyReqs(r=>[...r,lid]);
     setLobbies(ls=>ls.map(l=>l.id===lid?{...l,pendingRequests:[...(l.pendingRequests||[]),myId]}:l));
-    await supabase.from("lobby_members").upsert({lobby_id:lid,user_id:myId,status:"pending"},{onConflict:"lobby_id,user_id"}).catch(()=>{});
+    const{error}=await supabase.from("lobby_members").upsert({lobby_id:lid,user_id:myId,status:"pending"},{onConflict:"lobby_id,user_id"});
+    if(error) console.error("reqLobby error:",error);
   };
   const approveLobby = async (lid, uid) => {
     setLobbies(ls=>ls.map(l=>l.id===lid?{...l,memberIds:[...l.memberIds,uid],pendingRequests:l.pendingRequests.filter(r=>r!==uid)}:l));
-    await supabase.from("lobby_members").update({status:"active"}).eq("lobby_id",lid).eq("user_id",uid).catch(()=>{});
+    const{error}=await supabase.from("lobby_members").update({status:"active"}).eq("lobby_id",lid).eq("user_id",uid);
+    if(error) console.error("approveLobby error:",error);
   };
   const denyLobby = async (lid, uid) => {
     setLobbies(ls=>ls.map(l=>l.id===lid?{...l,pendingRequests:l.pendingRequests.filter(r=>r!==uid)}:l));
-    await supabase.from("lobby_members").delete().eq("lobby_id",lid).eq("user_id",uid).catch(()=>{});
+    const{error}=await supabase.from("lobby_members").delete().eq("lobby_id",lid).eq("user_id",uid);
+    if(error) console.error("denyLobby error:",error);
   };
 
   const pendingCount = groups.reduce((a,g)=>a+(g.pendingRequests?.length||0),0)
@@ -1972,7 +1979,8 @@ function GroupDetail({ groupId, groups, setGroups, onBack, openPlayer, openChat,
     const{error:upErr}=await supabase.storage.from("car-photos").upload(path,file,{upsert:true});
     if(upErr){console.error("Banner upload failed",upErr);return;}
     const{data:{publicUrl}}=supabase.storage.from("car-photos").getPublicUrl(path);
-    await supabase.from("groups").update({banner_url:publicUrl}).eq("id",groupId).catch(()=>{});
+    const{error:dbErr}=await supabase.from("groups").update({banner_url:publicUrl}).eq("id",groupId);
+    if(dbErr) console.error("Group banner update error:",dbErr);
     setGroups(gs=>gs.map(x=>x.id===groupId?{...x,bannerUrl:publicUrl}:x));
   };
 
@@ -1980,14 +1988,16 @@ function GroupDetail({ groupId, groups, setGroups, onBack, openPlayer, openChat,
     if (!newPost.trim()) return;
     const post={id:`local-${Date.now()}`,group_id:groupId,user_id:myProfile.id,content:newPost.trim(),created_at:new Date().toISOString(),profiles:{username:myProfile.username,avatar_initials:myProfile.avatar}};
     setPosts(p=>[post,...p]); setNewPost("");
-    await supabase.from("group_posts").insert({group_id:groupId,user_id:myProfile.id,content:post.content}).catch(()=>{});
+    const{error:postErr}=await supabase.from("group_posts").insert({group_id:groupId,user_id:myProfile.id,content:post.content});
+    if(postErr) console.error("submitPost error:",postErr);
   };
 
   const submitEvent = async() => {
     if (!eventForm.title.trim()||!eventForm.date) return;
     const ev={id:`local-${Date.now()}`,group_id:groupId,title:eventForm.title,event_date:eventForm.date,location:eventForm.location,is_public:eventForm.isPublic,created_at:new Date().toISOString()};
     setEvents(e=>[...e,ev]); setShowNewEvent(false); setEventForm({title:"",date:"",location:"",isPublic:true});
-    await supabase.from("group_events").insert({group_id:groupId,title:ev.title,event_date:ev.event_date,location:ev.location,is_public:ev.is_public}).catch(()=>{});
+    const{error:evErr}=await supabase.from("group_events").insert({group_id:groupId,title:ev.title,event_date:ev.event_date,location:ev.location,is_public:ev.is_public});
+    if(evErr) console.error("submitEvent error:",evErr);
   };
 
   const fmt=(ts)=>{if(!ts)return"";const d=new Date(ts),now=new Date(),diff=now-d;if(diff<60000)return"just now";if(diff<3600000)return`${Math.floor(diff/60000)}m ago`;if(diff<86400000)return d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});return d.toLocaleDateString([],{month:"short",day:"numeric"});};
@@ -2192,7 +2202,8 @@ function ChatView({ groupId, groups, onBack, openPlayer, myProfile, allUsers }) 
   const send = async () => {
     const text=input.trim(); if(!text) return;
     setInput("");
-    await supabase.from("group_messages").insert({group_id:groupId,user_id:myProfile.id,content:text});
+    const{error}=await supabase.from("group_messages").insert({group_id:groupId,user_id:myProfile.id,content:text});
+    if(error) console.error("send message error:",error);
   };
 
   if (!g) return null;
@@ -2335,7 +2346,8 @@ function MapView({ groups, openPlayer, myProfile, setMyProfile, allUsers, lobbie
     navigator.geolocation.getCurrentPosition(
       async(pos)=>{
         const{latitude:lat,longitude:lng}=pos.coords;
-        await supabase.from("profiles").update({lat,lng}).eq("id",myId);
+        const{error:locErr}=await supabase.from("profiles").update({lat,lng}).eq("id",myId);
+        if(locErr) console.error("Set location error:",locErr);
         setMyProfile(p=>({...p,lat,lng}));
         if(mapRef.current) mapRef.current.flyTo({center:[lng,lat],zoom:13});
         setLocating(false);
@@ -2348,7 +2360,8 @@ function MapView({ groups, openPlayer, myProfile, setMyProfile, allUsers, lobbie
   const handleToggleVisible = async () => {
     const next=!mapVisible; setMapVisible(next);
     setMyProfile(p=>({...p,mapVisible:next}));
-    await supabase.from("profiles").update({map_visible:next}).eq("id",myId);
+    const{error}=await supabase.from("profiles").update({map_visible:next}).eq("id",myId);
+    if(error) console.error("Toggle visible error:",error);
   };
 
   return (
@@ -2858,11 +2871,12 @@ function EditProfile({ myProfile, setMyProfile, myCar, setMyCar, onBack }) {
         bannerUrl=publicUrl;
       }
       if (myProfile.id) {
-        await supabase.from("profiles").update({
+        const{error:profErr}=await supabase.from("profiles").update({
           display_name:form.displayName, show_real_name:form.showRealName,
           city:form.city, instagram:form.instagram, avatar_initials:form.avatar,
           banner_url:bannerUrl||null,
         }).eq("id",myProfile.id);
+        if(profErr) throw profErr;
       }
       let newCarId=carForm.id;
       if (carForm.make.trim()&&carForm.model.trim()&&myProfile.id) {
@@ -2873,9 +2887,11 @@ function EditProfile({ myProfile, setMyProfile, myCar, setMyCar, onBack }) {
           photos:photoUrl?[photoUrl]:(carForm.photoUrl?[carForm.photoUrl]:[]), is_primary:true,
         };
         if (carForm.id) {
-          await supabase.from("user_cars").update(carPayload).eq("id",carForm.id);
+          const{error:carErr}=await supabase.from("user_cars").update(carPayload).eq("id",carForm.id);
+          if(carErr) throw carErr;
         } else {
-          const{data:inserted}=await supabase.from("user_cars").insert(carPayload).select("id").single();
+          const{data:inserted,error:insErr}=await supabase.from("user_cars").insert(carPayload).select("id").single();
+          if(insErr) throw insErr;
           newCarId=inserted?.id||null;
         }
       }
