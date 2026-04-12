@@ -1003,7 +1003,16 @@ export default function App() {
     return <AuthPage initialMode={authMode}/>;
   }
 
-
+  // Paywall — show unless user has been granted access
+  if (!myProfile.hasAccess && myProfile.id) {
+    return (
+      <PaywallScreen
+        session={session}
+        onAccessGranted={() => loadData(session.user.id)}
+        onLogout={handleLogout}
+      />
+    );
+  }
 
   const myId = session.user.id;
   const isFriend = id => friends.includes(id);
