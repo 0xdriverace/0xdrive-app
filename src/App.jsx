@@ -1103,7 +1103,7 @@ export default function App() {
           <Header myProfile={myProfile} onLogout={handleLogout} />
           <div className="content fade" key={tab+playerView+chatGroupId+lobbyDetailId+groupDetailId+editingProfile}>
             {editingProfile ? (
-              <EditProfile myProfile={myProfile} setMyProfile={setMyProfile} myCar={myCar} setMyCar={setMyCar} onBack={()=>setEditingProfile(false)}/>
+              <EditProfile myProfile={myProfile} setMyProfile={setMyProfile} myCar={myCar} setMyCar={setMyCar} userId={session.user.id} onBack={()=>setEditingProfile(false)}/>
             ) : playerView ? (
               <UserProfile userId={playerView} onBack={()=>setPlayerView(null)}
                 isFriend={isFriend} sentFR={sentFR} addFR={addFR}
@@ -2824,7 +2824,7 @@ function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateG
 }
 
 /* ─── EDIT PROFILE ───────────────────────────────────────── */
-function EditProfile({ myProfile, setMyProfile, myCar, setMyCar, onBack }) {
+function EditProfile({ myProfile, setMyProfile, myCar, setMyCar, userId, onBack }) {
   const [form, setForm] = useState({...myProfile});
   const [carForm, setCarForm] = useState({...myCar});
   const [photoFile, setPhotoFile] = useState(null);
@@ -2850,38 +2850,37 @@ function EditProfile({ myProfile, setMyProfile, myCar, setMyCar, onBack }) {
   };
 
   const handleSave=async()=>{
+    if (!userId) { setError("Not logged in."); return; }
     setSaving(true); setError("");
     try {
       let photoUrl=carForm.photoUrl;
-      if (photoFile&&myProfile.id) {
+      if (photoFile) {
         const ext=photoFile.name.split(".").pop()||"jpg";
-        const path=`${myProfile.id}/${Date.now()}.${ext}`;
+        const path=`${userId}/${Date.now()}.${ext}`;
         const{error:upErr}=await supabase.storage.from("car-photos").upload(path,photoFile,{upsert:true});
         if(upErr) throw upErr;
         const{data:{publicUrl}}=supabase.storage.from("car-photos").getPublicUrl(path);
         photoUrl=publicUrl;
       }
       let bannerUrl=myProfile.bannerUrl||"";
-      if (bannerFile&&myProfile.id) {
+      if (bannerFile) {
         const ext=bannerFile.name.split(".").pop()||"jpg";
-        const path=`${myProfile.id}/banner-${Date.now()}.${ext}`;
+        const path=`${userId}/banner-${Date.now()}.${ext}`;
         const{error:upErr}=await supabase.storage.from("car-photos").upload(path,bannerFile,{upsert:true});
         if(upErr) throw upErr;
         const{data:{publicUrl}}=supabase.storage.from("car-photos").getPublicUrl(path);
         bannerUrl=publicUrl;
       }
-      if (myProfile.id) {
-        const{error:profErr}=await supabase.from("profiles").update({
-          display_name:form.displayName, show_real_name:form.showRealName,
-          city:form.city, instagram:form.instagram, avatar_initials:form.avatar,
-          banner_url:bannerUrl||null,
-        }).eq("id",myProfile.id);
-        if(profErr) throw profErr;
-      }
+      const{error:profErr}=await supabase.from("profiles").update({
+        display_name:form.displayName, show_real_name:form.showRealName,
+        city:form.city, instagram:form.instagram, avatar_initials:form.avatar,
+        banner_url:bannerUrl||null,
+      }).eq("id",userId);
+      if(profErr) throw profErr;
       let newCarId=carForm.id;
-      if (carForm.make.trim()&&carForm.model.trim()&&myProfile.id) {
+      if (carForm.make.trim()&&carForm.model.trim()) {
         const carPayload={
-          user_id:myProfile.id, make:carForm.make.trim(), model:carForm.model.trim(),
+          user_id:userId, make:carForm.make.trim(), model:carForm.model.trim(),
           year:parseInt(carForm.year)||null, trim:carForm.trim.trim()||null,
           mods:carForm.mods.trim()||null, build_stage:carForm.buildStage||"stock",
           photos:photoUrl?[photoUrl]:(carForm.photoUrl?[carForm.photoUrl]:[]), is_primary:true,
@@ -2895,10 +2894,10 @@ function EditProfile({ myProfile, setMyProfile, myCar, setMyCar, onBack }) {
           newCarId=inserted?.id||null;
         }
       }
-      setMyProfile({...form,instagram:form.instagram,socials:{...form.socials,instagram:form.instagram},bannerUrl});
+      setMyProfile(p=>({...p,...form,id:userId,instagram:form.instagram,socials:{...form.socials,instagram:form.instagram},bannerUrl}));
       setMyCar({...carForm,id:newCarId,photoUrl});
       onBack();
-    } catch(err){ console.error("Save error:",err); setError("Failed to save. Check your connection."); }
+    } catch(err){ console.error("Save error:",err); setError(err?.message||"Failed to save. Check your connection."); }
     finally { setSaving(false); }
   };
 
