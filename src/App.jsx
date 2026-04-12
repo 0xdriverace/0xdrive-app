@@ -69,7 +69,7 @@ const MOD_CATEGORIES = [
 
 const BLANK_PROFILE = {
   id: null, username: "", displayName: "", showRealName: false,
-  avatar: "", city: "", car: "", year: "",
+  avatar: "", avatarUrl: "", city: "", car: "", year: "",
   wins:  {h2h:0, group:0, trial:0, drag:0},
   races: {h2h:0, group:0, trial:0, drag:0},
   times: {half_mile:"", quarter_mile:"", zero_sixty:"", zero_120:""},
@@ -121,6 +121,7 @@ function profileFromRow(row) {
     displayName: row.display_name||row.username||"",
     showRealName: row.show_real_name??false,
     avatar: row.avatar_initials||initials,
+    avatarUrl: row.avatar_url||"",
     city: row.city||"",
     instagram: row.instagram||"",
     socials: {instagram:row.instagram||"", twitter:"", youtube:""},
@@ -197,7 +198,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);min-hei
 .me-car{font-size:11px;color:var(--muted);margin-top:1px}
 
 /* AVATAR */
-.av{border-radius:50%;background:var(--s3);color:var(--text);font-family:var(--font-mono);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:600;border:1px solid var(--border2)}
+.av{border-radius:50%;background:var(--s3);color:var(--text);font-family:var(--font-mono);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:600;border:1px solid var(--border2);overflow:hidden}
 .av.s24{width:24px;height:24px;font-size:8px}
 .av.s28{width:28px;height:28px;font-size:8px}
 .av.s32{width:32px;height:32px;font-size:10px}
@@ -1096,7 +1097,7 @@ export default function App() {
             <Logo sidebarVariant />
             <div className="sidebar-logo-sub" style={{marginTop:6}}>Powered by 0xotics</div>
             <div className="sidebar-profile">
-              <div className="av s32 me">{myProfile.avatar}</div>
+              <Av user={myProfile} size={32} isMe/>
               <div className="sidebar-profile-info">
                 <div className="sidebar-profile-name">@{myProfile.username}</div>
                 <TierBadge wins={tw(myProfile.wins)} />
@@ -1208,7 +1209,7 @@ function Header({ myProfile, onLogout }) {
         <button className="btn btn-secondary btn-sm" onClick={onLogout} style={{fontSize:11,padding:"5px 10px"}}>Sign Out</button>
       </div>
       <div className="me-pill">
-        <div className="av s32 me">{myProfile.avatar}</div>
+        <Av user={myProfile} size={32} isMe/>
         <div style={{flex:1}}>
           <div className="me-username">@{myProfile.username}</div>
           <div className="me-car">{myProfile.year} {myProfile.car}</div>
@@ -1294,7 +1295,7 @@ function LobbiesView({ lobbies, setLobbies, myProfile, allUsers, groups, isInLob
                 const u = getU(uid, allUsers, myProfile);
                 return u ? (
                   <div key={uid} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                    <div className="av s32">{u.avatar}</div>
+                    <Av user={u} size={32}/>
                     <div style={{flex:1}}>
                       <div style={{fontSize:13,fontWeight:600}}>@{u.username}</div>
                       {u.city&&<div style={{fontSize:11,color:"var(--muted)"}}>📍 {u.city}</div>}
@@ -1522,7 +1523,7 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
               <div key={m.id} className="mph-member">
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <span style={{fontFamily:"var(--font-mono)",fontSize:10,color:"var(--muted2)",width:16,textAlign:"right"}}>{i+1}</span>
-                  <div className={`av s28 ${m.id===myProfile.id?"me":""}`}>{m.avatar}</div>
+                  <Av user={m} size={28} isMe={m.id===myProfile.id}/>
                   <div>
                     <div style={{fontSize:12,fontWeight:600}}>@{m.username}</div>
                     {memberCars[m.id]&&<div style={{fontSize:10,color:"var(--muted)",fontFamily:"var(--font-mono)"}}>{memberCars[m.id].str}</div>}
@@ -1547,7 +1548,7 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
           <div className="card" style={{marginBottom:8}}>
             {pending.map(u=>(
               <div key={u.id} className="lobby-user-row">
-                <div className="av s32" style={{cursor:"pointer"}} onClick={()=>openPlayer(u.id)}>{u.avatar}</div>
+                <Av user={u} size={32} style={{cursor:"pointer"}} onClick={()=>openPlayer(u.id)}/>
                 <div style={{flex:1,cursor:"pointer"}} onClick={()=>openPlayer(u.id)}>
                   <div style={{fontSize:13,fontWeight:600}}>@{u.username}</div>
                   {u.city&&<div style={{fontSize:11,color:"var(--muted)"}}>📍 {u.city}</div>}
@@ -1569,7 +1570,7 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
           const isMe = m.id===myProfile.id;
           return (
             <div key={m.id} className="list-item" onClick={()=>!isMe&&openPlayer(m.id)}>
-              <div className={`av s32 ${isMe?"me":""}`}>{m.avatar}</div>
+              <Av user={m} size={32} isMe={isMe}/>
               <div className="list-item-info">
                 <div className="list-item-title">
                   @{m.username}
@@ -1642,7 +1643,7 @@ function GroupsView({ groups, setGroups, isInGroup, sentGR, joinGroup, reqGroup,
                 const u = getU(uid,allUsers,myProfile);
                 return u?(
                   <div key={uid} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                    <div className="av s32">{u.avatar}</div>
+                    <Av user={u} size={32}/>
                     <div style={{flex:1}}>
                       <div style={{fontSize:13,fontWeight:600}}>@{u.username}</div>
                       {u.city&&<div style={{fontSize:11,color:"var(--muted)"}}>📍 {u.city}</div>}
@@ -1742,7 +1743,7 @@ function SearchView({ isFriend, sentFR, addFR, openPlayer, groups, isInGroup, se
             const rank = computeRanks(allUsers,myProfile).find(r=>r.id===p.id)?.rank??99;
             return (
               <div key={p.id} className="user-row" onClick={()=>openPlayer(p.id)}>
-                <div className="av s40">{p.avatar}</div>
+                <Av user={p} size={40}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div className="user-username">@{p.username}</div>
                   {p.showRealName&&<div className="user-name">{p.displayName}</div>}
@@ -1807,7 +1808,7 @@ function SearchView({ isFriend, sentFR, addFR, openPlayer, groups, isInGroup, se
           ? <div className="empty">Search for a car make or model above.</div>
           : users.filter(p=>p.car&&(!q||p.car.toLowerCase().includes(q.toLowerCase()))).map(p=>(
             <div key={p.id} className="user-row" onClick={()=>openPlayer(p.id)}>
-              <div className="av s40">{p.avatar}</div>
+              <Av user={p} size={40}/>
               <div style={{flex:1}}>
                 <div style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{p.year} {p.car}</div>
                 <div className="user-username">@{p.username}</div>
@@ -1846,7 +1847,7 @@ function UserProfile({ userId, onBack, isFriend, sentFR, addFR, groups, isInGrou
 
       <div style={{padding:"0 16px 14px"}}>
         <div style={{display:"flex",gap:14,alignItems:"flex-start",marginBottom:12}}>
-          <div className={`av s56 ${isMe?"me":""}`}>{p.avatar}</div>
+          <Av user={p} size={56} isMe={isMe}/>
           <div style={{flex:1}}>
             <div style={{fontSize:13,color:"var(--accent)",fontWeight:600,marginBottom:2}}>@{p.username}</div>
             {p.showRealName&&<div style={{fontSize:21,fontWeight:700,letterSpacing:-.5,lineHeight:1.1}}>{p.displayName}</div>}
@@ -1976,7 +1977,7 @@ function GroupDetail({ groupId, groups, setGroups, onBack, openPlayer, openChat,
     supabase.from("user_cars").select("user_id,year,make,model").in("user_id",g.memberIds).eq("is_primary",true)
       .then(({data})=>{if(!data)return;const m={};data.forEach(c=>{m[c.user_id]=`${c.year} ${c.make} ${c.model}`;});setMemberCars(m);});
     // Load posts
-    supabase.from("group_posts").select("*,profiles(username,avatar_initials)").eq("group_id",groupId).order("created_at",{ascending:false}).limit(50)
+    supabase.from("group_posts").select("*,profiles(username,avatar_initials,avatar_url)").eq("group_id",groupId).order("created_at",{ascending:false}).limit(50)
       .then(({data})=>{ if(data) setPosts(data); }).catch(()=>{});
     // Load events
     supabase.from("group_events").select("*").eq("group_id",groupId).order("event_date",{ascending:true})
@@ -2077,7 +2078,7 @@ function GroupDetail({ groupId, groups, setGroups, onBack, openPlayer, openChat,
       {subTab==="Posts"&&(<>
         {inGroup&&(
           <div style={{margin:"0 16px 10px",display:"flex",gap:8}}>
-            <div className="av s32 me">{myProfile.avatar}</div>
+            <Av user={myProfile} size={32} isMe/>
             <div style={{flex:1,display:"flex",gap:6}}>
               <input className="inp" placeholder="Post something to the group…" value={newPost} onChange={e=>setNewPost(e.target.value)}
                 onKeyDown={e=>e.key==="Enter"&&submitPost()} style={{flex:1}}/>
@@ -2089,7 +2090,7 @@ function GroupDetail({ groupId, groups, setGroups, onBack, openPlayer, openChat,
         {posts.map(p=>(
           <div key={p.id} className="post-card">
             <div className="post-author">
-              <div className="av s28">{p.profiles?.avatar_initials||"?"}</div>
+              <Av user={{avatar:p.profiles?.avatar_initials||"?",avatarUrl:p.profiles?.avatar_url||""}} size={28}/>
               <div>
                 <div style={{fontSize:12,fontWeight:600,color:theme}}>@{p.profiles?.username||"?"}</div>
                 <div style={{fontSize:10,color:"var(--muted2)"}}>{fmt(p.created_at)}</div>
@@ -2151,7 +2152,7 @@ function GroupDetail({ groupId, groups, setGroups, onBack, openPlayer, openChat,
         <div className="list-card" style={{margin:"0 16px 14px"}}>
           {members.map(m=>(
             <div key={m.id} className="list-item" onClick={()=>m.id!==myProfile.id&&openPlayer(m.id)}>
-              <div className={`av s32 ${m.id===myProfile.id?"me":""}`}>{m.avatar}</div>
+              <Av user={m} size={32} isMe={m.id===myProfile.id}/>
               <div className="list-item-info">
                 <div className="list-item-title">@{m.username}{m.id===myProfile.id&&<span style={{fontSize:10,color:theme,marginLeft:6}}>YOU</span>}{m.id===g.admin&&<span style={{fontSize:9,color:"var(--muted2)",marginLeft:4,background:"var(--s3)",padding:"1px 5px",borderRadius:3}}>ADMIN</span>}</div>
                 {memberCars[m.id]&&<div className="list-item-sub" style={{fontFamily:"var(--font-mono)",fontSize:10}}>{memberCars[m.id]}</div>}
@@ -2188,12 +2189,12 @@ function ChatView({ groupId, groups, onBack, openPlayer, myProfile, allUsers }) 
   useEffect(()=>{
     if (!groupId) return;
     setLoading(true); knownIds.current=new Set(); setMessages([]);
-    supabase.from("group_messages").select("*, profiles(username, avatar_initials)")
+    supabase.from("group_messages").select("*, profiles(username, avatar_initials, avatar_url)")
       .eq("group_id",groupId).order("created_at",{ascending:true}).limit(100)
       .then(({data})=>{
         if (data) {
           data.forEach(m=>knownIds.current.add(m.id));
-          setMessages(data.map(m=>({id:m.id,uid:m.user_id,username:m.profiles?.username||"?",avatar:m.profiles?.avatar_initials||"?",text:m.content,ts:m.created_at})));
+          setMessages(data.map(m=>({id:m.id,uid:m.user_id,username:m.profiles?.username||"?",avatar:m.profiles?.avatar_initials||"?",avatarUrl:m.profiles?.avatar_url||"",text:m.content,ts:m.created_at})));
         }
         setLoading(false);
       });
@@ -2206,12 +2207,12 @@ function ChatView({ groupId, groups, onBack, openPlayer, myProfile, allUsers }) 
         const row=payload.new;
         if (knownIds.current.has(row.id)) return;
         knownIds.current.add(row.id);
-        let username="?",avatar="?";
+        let username="?",avatar="?",avatarUrl="";
         const known=allUsers.find(u=>u.id===row.user_id);
-        if (known){username=known.username;avatar=known.avatar;}
-        else if(row.user_id===myProfile.id){username=myProfile.username;avatar=myProfile.avatar;}
-        else{const{data:prof}=await supabase.from("profiles").select("username,avatar_initials").eq("id",row.user_id).single();if(prof){username=prof.username;avatar=prof.avatar_initials||"?";}}
-        setMessages(prev=>[...prev,{id:row.id,uid:row.user_id,username,avatar,text:row.content,ts:row.created_at}]);
+        if (known){username=known.username;avatar=known.avatar;avatarUrl=known.avatarUrl||"";}
+        else if(row.user_id===myProfile.id){username=myProfile.username;avatar=myProfile.avatar;avatarUrl=myProfile.avatarUrl||"";}
+        else{const{data:prof}=await supabase.from("profiles").select("username,avatar_initials,avatar_url").eq("id",row.user_id).single();if(prof){username=prof.username;avatar=prof.avatar_initials||"?";avatarUrl=prof.avatar_url||"";}}
+        setMessages(prev=>[...prev,{id:row.id,uid:row.user_id,username,avatar,avatarUrl,text:row.content,ts:row.created_at}]);
       }).subscribe();
     return ()=>{supabase.removeChannel(channel);};
   }, [groupId]);
@@ -2242,7 +2243,7 @@ function ChatView({ groupId, groups, onBack, openPlayer, myProfile, allUsers }) 
       <div className="list-card" style={{margin:"0 16px 14px"}}>
         {members.map(m=>(
           <div key={m.id} className="list-item" onClick={()=>m.id!==myProfile.id&&openPlayer(m.id)}>
-            <div className={`av s32 ${m.id===myProfile.id?"me":""}`}>{m.avatar}</div>
+            <Av user={m} size={32} isMe={m.id===myProfile.id}/>
             <div className="list-item-info">
               <div className="list-item-title">@{m.username||m.avatar}{m.id===myProfile.id&&<span style={{fontSize:10,color:"var(--accent)",marginLeft:6}}>YOU</span>}</div>
               {memberCars[m.id]&&<div className="list-item-sub" style={{fontFamily:"var(--font-mono)",fontSize:10}}>{memberCars[m.id]}</div>}
@@ -2261,7 +2262,7 @@ function ChatView({ groupId, groups, onBack, openPlayer, myProfile, allUsers }) 
           const car=memberCars[msg.uid];
           return (
             <div key={msg.id} className={`msg-row ${mine?"mine":""}`}>
-              {!mine&&<div className="av s28">{msg.avatar}</div>}
+              {!mine&&<Av user={msg} size={28}/>}
               <div>
                 <div className="msg-meta">
                   {!mine&&<span className="msg-who">@{msg.username}</span>}
@@ -2270,7 +2271,7 @@ function ChatView({ groupId, groups, onBack, openPlayer, myProfile, allUsers }) 
                 </div>
                 <div className={`msg-bubble ${mine?"mine":""}`}><div className="msg-text">{msg.text}</div></div>
               </div>
-              {mine&&<div className="av s28 me">{msg.avatar||myProfile.avatar}</div>}
+              {mine&&<Av user={{...myProfile,avatar:msg.avatar||myProfile.avatar}} size={28} isMe/>}
             </div>
           );
         })}
@@ -2463,7 +2464,7 @@ function RanksView({ openPlayer, myProfile, allUsers, myCar }) {
   useEffect(()=>{
     let cancelled=false; setLoading(true);
     const run=async()=>{
-      let q=supabase.from("race_times").select("*, profiles(username,avatar_initials,city), user_cars(year,make,model,trim,build_stage)")
+      let q=supabase.from("race_times").select("*, profiles(username,avatar_initials,avatar_url,city), user_cars(year,make,model,trim,build_stage)")
         .eq("category",cat).order("time_seconds",{ascending:true}).limit(300);
       if (classFilter!=="All") q=q.eq("car_class",classFilter);
       if (locScope==="By City"&&myProfile.city) q=q.ilike("profiles.city",`%${myProfile.city.split(",")[0].trim()}%`);
@@ -2549,7 +2550,7 @@ function RanksView({ openPlayer, myProfile, allUsers, myCar }) {
         return (
           <div key={entry.id} className={`lb-row ${isMe?"mine":""}`} onClick={()=>openPlayer(entry.user_id)}>
             <div className="lb-rank" style={{color:rc,fontSize:i<3?15:12,width:20}}>{i+1}</div>
-            <div className={`av s32 ${isMe?"me":""}`}>{prof?.avatar_initials||"?"}</div>
+            <Av user={{avatar:prof?.avatar_initials||"?",avatarUrl:prof?.avatar_url||""}} size={32} isMe={isMe}/>
             <div className="lb-info">
               <div className="lb-name">
                 <span style={{color:"var(--accent)",fontWeight:600}}>@{prof?.username||"?"}</span>
@@ -2716,7 +2717,7 @@ function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateG
       {/* Identity card */}
       <div className="card" style={{marginBottom:8}}>
         <div style={{display:"flex",gap:14,alignItems:"flex-start",marginBottom:12}}>
-          <div className="av s56 me">{myProfile.avatar}</div>
+          <Av user={myProfile} size={56} isMe/>
           <div style={{flex:1}}>
             <div style={{fontSize:13,color:"var(--accent)",fontWeight:600,marginBottom:2}}>@{myProfile.username}</div>
             {myProfile.showRealName&&<div style={{fontSize:19,fontWeight:700,letterSpacing:-.5,lineHeight:1.1}}>{myProfile.displayName}</div>}
@@ -2863,6 +2864,17 @@ function compressImage(file, maxPx=1400, quality=0.82) {
   });
 }
 
+function Av({user, size=32, isMe=false, onClick, style}) {
+  const cls=`av s${size}${isMe?" me":""}`;
+  return (
+    <div className={cls} onClick={onClick} style={style}>
+      {user?.avatarUrl
+        ?<img src={user.avatarUrl} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}} alt=""/>
+        :(user?.avatar||"?")}
+    </div>
+  );
+}
+
 function EditProfile({ myProfile, setMyProfile, myCars, setMyCars, setMyCar, userId, onBack }) {
   const [form, setForm] = useState({
     displayName: myProfile.displayName||"", showRealName: myProfile.showRealName||false,
@@ -2875,10 +2887,13 @@ function EditProfile({ myProfile, setMyProfile, myCars, setMyCars, setMyCar, use
   const [cars, setCars] = useState(initCars);
   const [bannerFile, setBannerFile] = useState(null);
   const [bannerPreview, setBannerPreview] = useState(myProfile.bannerUrl||"");
+  const [profilePhotoFile, setProfilePhotoFile] = useState(null);
+  const [profilePhotoPreview, setProfilePhotoPreview] = useState(myProfile.avatarUrl||"");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [modsOpenIdx, setModsOpenIdx] = useState(null);
   const bannerRef = useRef(null);
+  const profilePhotoRef = useRef(null);
   const fileRefs = useRef({});
 
   const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
@@ -2907,6 +2922,10 @@ function EditProfile({ myProfile, setMyProfile, myCars, setMyCars, setMyCar, use
     const file=e.target.files?.[0]; if(!file) return;
     setBannerFile(file); setBannerPreview(URL.createObjectURL(file));
   };
+  const handleProfilePhotoSelect=(e)=>{
+    const file=e.target.files?.[0]; if(!file) return;
+    setProfilePhotoFile(file); setProfilePhotoPreview(URL.createObjectURL(file));
+  };
   const handlePhotoSelect=(idx,e)=>{
     const file=e.target.files?.[0]; if(!file) return;
     setC(idx,"_photoFile",file); setC(idx,"_photoPreview",URL.createObjectURL(file));
@@ -2924,10 +2943,18 @@ function EditProfile({ myProfile, setMyProfile, myCars, setMyCars, setMyCar, use
         if(e) throw e;
         bannerUrl=supabase.storage.from("car-photos").getPublicUrl(path).data.publicUrl;
       }
+      let avatarUrl=myProfile.avatarUrl||"";
+      if(profilePhotoFile){
+        const comp=await compressImage(profilePhotoFile,400,0.9);
+        const path=`${userId}/avatar-${Date.now()}.jpg`;
+        const{error:e}=await supabase.storage.from("car-photos").upload(path,comp,{upsert:true,contentType:"image/jpeg"});
+        if(e) throw e;
+        avatarUrl=supabase.storage.from("car-photos").getPublicUrl(path).data.publicUrl;
+      }
       const{error:profErr}=await supabase.from("profiles").update({
         display_name:form.displayName, show_real_name:form.showRealName,
         city:form.city, instagram:form.instagram, avatar_initials:form.avatar,
-        banner_url:bannerUrl||null,
+        banner_url:bannerUrl||null, avatar_url:avatarUrl||null,
       }).eq("id",userId);
       if(profErr) throw profErr;
 
@@ -2963,7 +2990,7 @@ function EditProfile({ myProfile, setMyProfile, myCars, setMyCars, setMyCar, use
           savedCars.push({...carFromRow({...payload,id:ins?.id,photos:payload.photos,is_primary:payload.is_primary}),isPrimary:car.isPrimary});
         }
       }
-      setMyProfile(p=>({...p,displayName:form.displayName,showRealName:form.showRealName,city:form.city,instagram:form.instagram,avatar:form.avatar,socials:{...p.socials,instagram:form.instagram},bannerUrl}));
+      setMyProfile(p=>({...p,displayName:form.displayName,showRealName:form.showRealName,city:form.city,instagram:form.instagram,avatar:form.avatar,avatarUrl,socials:{...p.socials,instagram:form.instagram},bannerUrl}));
       setMyCars(savedCars);
       const primary=savedCars.find(c=>c.isPrimary)||savedCars[0];
       if(primary) setMyCar(primary);
@@ -2980,6 +3007,23 @@ function EditProfile({ myProfile, setMyProfile, myCars, setMyCars, setMyCar, use
       <div className="pg-hdr" style={{paddingTop:0}}>
         <div className="pg-title">Edit Profile</div>
         <div className="pg-sub">Update your information</div>
+      </div>
+
+      {/* Profile photo */}
+      <div className="sec-lbl">Profile Photo</div>
+      <div style={{display:"flex",alignItems:"center",gap:14,margin:"0 16px 16px"}}>
+        <input ref={profilePhotoRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleProfilePhotoSelect}/>
+        <div onClick={()=>profilePhotoRef.current?.click()} style={{width:72,height:72,borderRadius:"50%",overflow:"hidden",border:"2px solid var(--accent)",cursor:"pointer",flexShrink:0,background:"var(--s3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:700,color:"var(--accent)"}}>
+          {profilePhotoPreview
+            ?<img src={profilePhotoPreview} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>
+            :<span>{form.avatar||"?"}</span>}
+        </div>
+        <div>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:4}}>Profile Picture</div>
+          <button onClick={()=>profilePhotoRef.current?.click()} style={{padding:"6px 14px",borderRadius:7,border:"1px solid var(--border)",background:"var(--s2)",color:"var(--muted2)",fontSize:12,cursor:"pointer"}}>
+            {profilePhotoPreview?"Change Photo":"Upload Photo"}
+          </button>
+        </div>
       </div>
 
       {/* Banner */}
