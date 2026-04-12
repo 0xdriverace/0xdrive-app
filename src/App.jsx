@@ -54,6 +54,19 @@ const BUILD_STAGES = [
   { key:"built",  label:"Fully Built", color:"#a855f7", bg:"rgba(168,85,247,.1)" },
 ];
 
+const MOD_CATEGORIES = [
+  { label:"Engine",        mods:["Cold Air Intake","Short Ram Intake","Turbo Kit","Supercharger","Bigger Turbo","Intercooler Upgrade","Fuel Injectors","Fuel Pump Upgrade","Tune / ECU Flash","Headers","High Flow Cats","Throttle Body Upgrade","Intake Manifold","Camshaft Upgrade","Forged Internals","Nitrous Kit","Methanol Injection","Oil Catch Can","Port & Polish"] },
+  { label:"Exhaust",       mods:["Cat-Back Exhaust","Axle-Back Exhaust","Downpipe","Midpipe","Test Pipes / Decat","Muffler Delete","X-Pipe","H-Pipe","Valved Exhaust","Custom Exhaust"] },
+  { label:"Forced Induction", mods:["Blow-Off Valve","Wastegate","Boost Controller","Charge Pipe Upgrade","Intercooler Piping","Sequential Turbos"] },
+  { label:"Suspension",    mods:["Coilovers","Lowering Springs","Air Suspension","Adjustable Dampers","Front Sway Bar","Rear Sway Bar","Strut Tower Brace","Control Arms","Camber Kit","Toe Links","Subframe Brace"] },
+  { label:"Brakes",        mods:["Big Brake Kit","Slotted Rotors","Drilled Rotors","Performance Brake Pads","Stainless Brake Lines","Upgraded Brake Fluid","Brake Duct Kit"] },
+  { label:"Wheels & Tires",mods:["Aftermarket Wheels","Performance Tires","Track Tires","Wheel Spacers","Wider Wheels","Stretched Fitment","Lug Nut Upgrade"] },
+  { label:"Exterior",      mods:["Front Splitter / Lip","Rear Diffuser","Side Skirts","Wing / Spoiler","Carbon Fiber Hood","Carbon Fiber Trunk","Widebody Kit","Body Kit","Fender Flares","Full Wrap","Custom Paint","Tinted Windows","Clear Bra / PPF","Painted Calipers","Headlight Tint"] },
+  { label:"Interior",      mods:["Racing Seats","Roll Cage","Harness Bar","5-Point Harness","Racing Steering Wheel","Short Shifter","Shift Knob","Carbon Fiber Trim","Alcantara","Gauges / A-Pillar Pod","Fire Suppression","Stripped Interior","Racing Pedals"] },
+  { label:"Electronics",   mods:["Aftermarket Head Unit","Subwoofer","Amplifier","Upgraded Speakers","Dashcam","Launch Control","Traction Control Delete","ABS Delete","Data Logger","Standalone ECU"] },
+  { label:"Cooling",       mods:["Upgraded Radiator","Oil Cooler","Transmission Cooler","Fan Upgrade","Thermal Wrap","Heat Shield"] },
+];
+
 const BLANK_PROFILE = {
   id: null, username: "", displayName: "", showRealName: false,
   avatar: "", city: "", car: "", year: "",
@@ -123,7 +136,7 @@ function carFromRow(row) {
     id: row.id, make: row.make||"", model: row.model||"",
     year: row.year?.toString()||"", trim: row.trim||"",
     mods: row.mods||"", photoUrl: row.photos?.[0]||"",
-    buildStage: row.build_stage||"stock",
+    buildStage: row.build_stage||"stock", isPrimary: row.is_primary||false,
   };
 }
 
@@ -862,6 +875,7 @@ export default function App() {
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [createLobbyOpen, setCreateLobbyOpen] = useState(false);
   const [myCar, setMyCar] = useState({...BLANK_CAR});
+  const [myCars, setMyCars] = useState([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -883,7 +897,7 @@ export default function App() {
         supabase.from("profiles").select("*").eq("id", userId).single(),
         supabase.from("profiles").select("*").neq("id", userId),
         supabase.from("groups").select("*, group_members(user_id, role, status)"),
-        supabase.from("user_cars").select("*").eq("user_id", userId).eq("is_primary", true).maybeSingle(),
+        supabase.from("user_cars").select("*").eq("user_id", userId).order("is_primary", {ascending:false}),
         supabase.from("user_cars").select("user_id,year,make,model").eq("is_primary", true),
         supabase.from("friends").select("user_id,friend_id").or(`user_id.eq.${userId},friend_id.eq.${userId}`).eq("status","accepted").catch(()=>({data:[]})),
       ]);
@@ -918,7 +932,12 @@ export default function App() {
           theme: g.theme_color||"#e61a1a", bannerUrl: g.banner_url||"",
         })));
       }
-      if (myCarRes.data) setMyCar(carFromRow(myCarRes.data));
+      if (myCarRes.data?.length) {
+        const allCars = myCarRes.data.map(carFromRow);
+        setMyCars(allCars);
+        const primary = allCars.find(c=>c.isPrimary)||allCars[0];
+        if (primary) setMyCar(primary);
+      }
 
       // Load lobbies (graceful fallback if table doesn't exist)
       try {
@@ -1103,7 +1122,7 @@ export default function App() {
           <Header myProfile={myProfile} onLogout={handleLogout} />
           <div className="content fade" key={tab+playerView+chatGroupId+lobbyDetailId+groupDetailId+editingProfile}>
             {editingProfile ? (
-              <EditProfile myProfile={myProfile} setMyProfile={setMyProfile} myCar={myCar} setMyCar={setMyCar} userId={session.user.id} onBack={()=>setEditingProfile(false)}/>
+              <EditProfile myProfile={myProfile} setMyProfile={setMyProfile} myCars={myCars} setMyCars={setMyCars} setMyCar={setMyCar} userId={session.user.id} onBack={()=>setEditingProfile(false)}/>
             ) : playerView ? (
               <UserProfile userId={playerView} onBack={()=>setPlayerView(null)}
                 isFriend={isFriend} sentFR={sentFR} addFR={addFR}
@@ -2844,52 +2863,66 @@ function compressImage(file, maxPx=1400, quality=0.82) {
   });
 }
 
-function EditProfile({ myProfile, setMyProfile, myCar, setMyCar, userId, onBack }) {
-  const [form, setForm] = useState({...myProfile});
-  const [carForm, setCarForm] = useState({...myCar});
-  const [photoFile, setPhotoFile] = useState(null);
-  const [photoPreview, setPhotoPreview] = useState(myCar.photoUrl||"");
+function EditProfile({ myProfile, setMyProfile, myCars, setMyCars, setMyCar, userId, onBack }) {
+  const [form, setForm] = useState({
+    displayName: myProfile.displayName||"", showRealName: myProfile.showRealName||false,
+    city: myProfile.city||"", instagram: myProfile.instagram||"",
+    avatar: myProfile.avatar||"", times: myProfile.times||{},
+  });
+  const initCars = myCars.length > 0
+    ? myCars.map(c=>({...c, _photoFile:null, _photoPreview:c.photoUrl||"", _mods:(c.mods||"").split(",").map(s=>s.trim()).filter(Boolean), _deleted:false}))
+    : [{...BLANK_CAR, isPrimary:true, _photoFile:null, _photoPreview:"", _mods:[], _deleted:false}];
+  const [cars, setCars] = useState(initCars);
   const [bannerFile, setBannerFile] = useState(null);
   const [bannerPreview, setBannerPreview] = useState(myProfile.bannerUrl||"");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const fileRef = useRef(null);
+  const [modsOpenIdx, setModsOpenIdx] = useState(null);
   const bannerRef = useRef(null);
+  const fileRefs = useRef({});
 
   const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
-  const setC=(k,v)=>setCarForm(c=>({...c,[k]:v}));
+  const setC=(idx,k,v)=>setCars(cs=>cs.map((c,i)=>i===idx?{...c,[k]:v}:c));
+  const toggleMod=(idx,mod)=>setCars(cs=>cs.map((c,i)=>{
+    if(i!==idx) return c;
+    const has=c._mods.includes(mod);
+    return {...c,_mods:has?c._mods.filter(m=>m!==mod):[...c._mods,mod]};
+  }));
 
-  const handlePhotoSelect=(e)=>{
-    const file=e.target.files?.[0]; if(!file) return;
-    setPhotoFile(file); setPhotoPreview(URL.createObjectURL(file));
+  const addCar=()=>setCars(cs=>[...cs,{...BLANK_CAR,isPrimary:false,_photoFile:null,_photoPreview:"",_mods:[],_deleted:false}]);
+  const removeCar=(idx)=>{
+    setCars(cs=>{
+      const updated=cs.map((c,i)=>i===idx?{...c,_deleted:true}:c);
+      // If we just deleted the primary, make first non-deleted car primary
+      if(cs[idx].isPrimary){
+        const first=updated.findIndex(c=>!c._deleted);
+        if(first>=0) return updated.map((c,i)=>({...c,isPrimary:i===first}));
+      }
+      return updated;
+    });
   };
+  const setPrimary=(idx)=>setCars(cs=>cs.map((c,i)=>({...c,isPrimary:i===idx})));
 
   const handleBannerSelect=(e)=>{
     const file=e.target.files?.[0]; if(!file) return;
     setBannerFile(file); setBannerPreview(URL.createObjectURL(file));
   };
+  const handlePhotoSelect=(idx,e)=>{
+    const file=e.target.files?.[0]; if(!file) return;
+    setC(idx,"_photoFile",file); setC(idx,"_photoPreview",URL.createObjectURL(file));
+  };
 
   const handleSave=async()=>{
-    if (!userId) { setError("Not logged in."); return; }
+    if(!userId){setError("Not logged in.");return;}
     setSaving(true); setError("");
-    try {
-      let photoUrl=carForm.photoUrl;
-      if (photoFile) {
-        const compressed=await compressImage(photoFile,1400);
-        const path=`${userId}/${Date.now()}.jpg`;
-        const{error:upErr}=await supabase.storage.from("car-photos").upload(path,compressed,{upsert:true,contentType:"image/jpeg"});
-        if(upErr) throw upErr;
-        const{data:{publicUrl}}=supabase.storage.from("car-photos").getPublicUrl(path);
-        photoUrl=publicUrl;
-      }
+    try{
       let bannerUrl=myProfile.bannerUrl||"";
-      if (bannerFile) {
-        const compressed=await compressImage(bannerFile,1800);
+      if(bannerFile){
+        const comp=await compressImage(bannerFile,1800);
         const path=`${userId}/banner-${Date.now()}.jpg`;
-        const{error:upErr}=await supabase.storage.from("car-photos").upload(path,compressed,{upsert:true,contentType:"image/jpeg"});
-        if(upErr) throw upErr;
-        const{data:{publicUrl}}=supabase.storage.from("car-photos").getPublicUrl(path);
-        bannerUrl=publicUrl;
+        const{error:e}=await supabase.storage.from("car-photos").upload(path,comp,{upsert:true,contentType:"image/jpeg"});
+        if(e) throw e;
+        bannerUrl=supabase.storage.from("car-photos").getPublicUrl(path).data.publicUrl;
       }
       const{error:profErr}=await supabase.from("profiles").update({
         display_name:form.displayName, show_real_name:form.showRealName,
@@ -2897,29 +2930,49 @@ function EditProfile({ myProfile, setMyProfile, myCar, setMyCar, userId, onBack 
         banner_url:bannerUrl||null,
       }).eq("id",userId);
       if(profErr) throw profErr;
-      let newCarId=carForm.id;
-      if (carForm.make.trim()&&carForm.model.trim()) {
-        const carPayload={
-          user_id:userId, make:carForm.make.trim(), model:carForm.model.trim(),
-          year:parseInt(carForm.year)||null, trim:carForm.trim.trim()||null,
-          mods:carForm.mods.trim()||null, build_stage:carForm.buildStage||"stock",
-          photos:photoUrl?[photoUrl]:(carForm.photoUrl?[carForm.photoUrl]:[]), is_primary:true,
+
+      const savedCars=[];
+      for(const [i,car] of cars.entries()){
+        if(car._deleted){
+          if(car.id){const{error:e}=await supabase.from("user_cars").delete().eq("id",car.id);if(e)console.error("delete car err",e);}
+          continue;
+        }
+        if(!car.make.trim()||!car.model.trim()) continue;
+        let photoUrl=car.photoUrl;
+        if(car._photoFile){
+          const comp=await compressImage(car._photoFile,1400);
+          const path=`${userId}/car-${Date.now()}-${i}.jpg`;
+          const{error:e}=await supabase.storage.from("car-photos").upload(path,comp,{upsert:true,contentType:"image/jpeg"});
+          if(e) throw e;
+          photoUrl=supabase.storage.from("car-photos").getPublicUrl(path).data.publicUrl;
+        }
+        const payload={
+          user_id:userId, make:car.make.trim(), model:car.model.trim(),
+          year:parseInt(car.year)||null, trim:car.trim.trim()||null,
+          mods:car._mods.join(", ")||null, build_stage:car.buildStage||"stock",
+          photos:photoUrl?[photoUrl]:(car.photoUrl?[car.photoUrl]:[]),
+          is_primary:car.isPrimary||false,
         };
-        if (carForm.id) {
-          const{error:carErr}=await supabase.from("user_cars").update(carPayload).eq("id",carForm.id);
-          if(carErr) throw carErr;
+        if(car.id){
+          const{error:e}=await supabase.from("user_cars").update(payload).eq("id",car.id);
+          if(e) throw e;
+          savedCars.push({...carFromRow({...payload,id:car.id,photos:payload.photos,is_primary:payload.is_primary}),isPrimary:car.isPrimary});
         } else {
-          const{data:inserted,error:insErr}=await supabase.from("user_cars").insert(carPayload).select("id").single();
-          if(insErr) throw insErr;
-          newCarId=inserted?.id||null;
+          const{data:ins,error:e}=await supabase.from("user_cars").insert(payload).select("id").single();
+          if(e) throw e;
+          savedCars.push({...carFromRow({...payload,id:ins?.id,photos:payload.photos,is_primary:payload.is_primary}),isPrimary:car.isPrimary});
         }
       }
       setMyProfile(p=>({...p,displayName:form.displayName,showRealName:form.showRealName,city:form.city,instagram:form.instagram,avatar:form.avatar,socials:{...p.socials,instagram:form.instagram},bannerUrl}));
-      setMyCar({...carForm,id:newCarId,photoUrl});
+      setMyCars(savedCars);
+      const primary=savedCars.find(c=>c.isPrimary)||savedCars[0];
+      if(primary) setMyCar(primary);
       onBack();
-    } catch(err){ console.error("Save error:",err); setError(err?.message||"Failed to save. Check your connection."); }
-    finally { setSaving(false); }
+    }catch(err){console.error("Save error:",err);setError(err?.message||"Failed to save.");}
+    finally{setSaving(false);}
   };
+
+  const activeCars=cars.filter(c=>!c._deleted);
 
   return (
     <div className="fade">
@@ -2929,67 +2982,113 @@ function EditProfile({ myProfile, setMyProfile, myCar, setMyCar, userId, onBack 
         <div className="pg-sub">Update your information</div>
       </div>
 
-      {/* Profile banner */}
+      {/* Banner */}
       <div className="sec-lbl">Profile Banner</div>
       <div style={{margin:"0 16px 8px",borderRadius:"var(--radius-lg)",overflow:"hidden",border:"1px solid var(--border)",cursor:"pointer"}} onClick={()=>bannerRef.current?.click()}>
         <input ref={bannerRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleBannerSelect}/>
         {bannerPreview
-          ? <img src={bannerPreview} style={{width:"100%",height:100,objectFit:"cover",display:"block"}} alt="banner"/>
-          : <div className="profile-banner-empty" style={{height:70,borderRadius:"var(--radius-lg)",fontSize:12}}><span style={{fontSize:16}}>🖼</span> Tap to add a profile banner</div>
-        }
+          ?<img src={bannerPreview} style={{width:"100%",height:100,objectFit:"cover",display:"block"}} alt="banner"/>
+          :<div className="profile-banner-empty" style={{height:70,borderRadius:"var(--radius-lg)",fontSize:12}}><span style={{fontSize:16}}>🖼</span> Tap to add a profile banner</div>}
         {bannerPreview&&<div style={{textAlign:"center",padding:"6px 0",fontSize:11,color:"var(--muted2)",background:"var(--s2)"}}>Tap to change banner</div>}
       </div>
 
-      {/* Car section */}
-      <div className="sec-lbl">My Car</div>
-      <div className="card" style={{marginBottom:8}}>
-        <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handlePhotoSelect}/>
-        <div className="photo-upload-wrap" onClick={()=>fileRef.current?.click()}>
-          {photoPreview&&<img src={photoPreview} alt="car preview"/>}
-          <div className="photo-upload-overlay">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-            <span className="photo-upload-hint">{photoPreview?"Change photo":"Add photo"}</span>
-          </div>
-          {!photoPreview&&(<>
-            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-            <span style={{fontSize:11,color:"var(--muted2)"}}>Tap to add car photo</span>
-          </>)}
-        </div>
-
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-          {[["Make","make","Honda"],["Model","model","Civic"],["Year","year","2020"],["Trim","trim","Type R"]].map(([label,key,ph])=>(
-            <div key={key}>
-              <label className="inp-label">{label}</label>
-              <input className="inp" value={carForm[key]||""} onChange={e=>setC(key,e.target.value)} placeholder={ph} type={key==="year"?"number":"text"}/>
+      {/* Cars */}
+      <div className="sec-lbl">My Garage</div>
+      {activeCars.map((car,visIdx)=>{
+        const realIdx=cars.indexOf(car);
+        return(
+          <div key={realIdx} className="card" style={{marginBottom:8,position:"relative"}}>
+            {/* Primary badge + controls */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <button onClick={()=>setPrimary(realIdx)} style={{
+                padding:"3px 10px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer",border:"none",
+                background:car.isPrimary?"var(--accent)":"var(--s3)",color:car.isPrimary?"#fff":"var(--muted2)",
+              }}>{car.isPrimary?"★ Primary":"Set Primary"}</button>
+              {activeCars.length>1&&<button onClick={()=>removeCar(realIdx)} style={{padding:"3px 10px",borderRadius:6,fontSize:11,cursor:"pointer",border:"1px solid rgba(255,59,48,.3)",background:"transparent",color:"var(--red)"}}>Remove</button>}
             </div>
-          ))}
-        </div>
 
-        {/* Build Stage */}
-        <div style={{marginBottom:8}}>
-          <label className="inp-label">Build Stage</label>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            {BUILD_STAGES.map(s=>(
-              <button key={s.key}
-                onClick={()=>setC("buildStage",s.key)}
-                style={{
-                  padding:"5px 12px",borderRadius:6,border:`1px solid ${carForm.buildStage===s.key?s.color:s.color+"44"}`,
-                  background:carForm.buildStage===s.key?s.bg:"transparent",
-                  color:carForm.buildStage===s.key?s.color:"var(--muted2)",
-                  fontSize:11,fontWeight:600,cursor:"pointer",letterSpacing:.3,transition:"all .12s",
-                }}>
-                {s.label}
+            {/* Photo */}
+            <input ref={el=>fileRefs.current[realIdx]=el} type="file" accept="image/*" style={{display:"none"}} onChange={e=>handlePhotoSelect(realIdx,e)}/>
+            <div className="photo-upload-wrap" onClick={()=>fileRefs.current[realIdx]?.click()} style={{marginBottom:10}}>
+              {car._photoPreview&&<img src={car._photoPreview} alt="car"/>}
+              <div className="photo-upload-overlay">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                <span className="photo-upload-hint">{car._photoPreview?"Change photo":"Add photo"}</span>
+              </div>
+              {!car._photoPreview&&(<><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg><span style={{fontSize:11,color:"var(--muted2)"}}>Tap to add car photo</span></>)}
+            </div>
+
+            {/* Fields */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+              {[["Make","make","Honda"],["Model","model","Civic"],["Year","year","2020"],["Trim","trim","Type R"]].map(([label,key,ph])=>(
+                <div key={key}>
+                  <label className="inp-label">{label}</label>
+                  <input className="inp" value={car[key]||""} onChange={e=>setC(realIdx,key,e.target.value)} placeholder={ph} type={key==="year"?"number":"text"}/>
+                </div>
+              ))}
+            </div>
+
+            {/* Build Stage */}
+            <div style={{marginBottom:10}}>
+              <label className="inp-label">Build Stage</label>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {BUILD_STAGES.map(s=>(
+                  <button key={s.key} onClick={()=>setC(realIdx,"buildStage",s.key)} style={{
+                    padding:"5px 12px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer",letterSpacing:.3,transition:"all .12s",
+                    border:`1px solid ${car.buildStage===s.key?s.color:s.color+"44"}`,
+                    background:car.buildStage===s.key?s.bg:"transparent",
+                    color:car.buildStage===s.key?s.color:"var(--muted2)",
+                  }}>{s.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Mods picker */}
+            <div>
+              <button onClick={()=>setModsOpenIdx(modsOpenIdx===realIdx?null:realIdx)} style={{
+                width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",
+                padding:"9px 12px",borderRadius:8,border:"1px solid var(--border)",
+                background:"var(--s2)",cursor:"pointer",color:"var(--fg)",fontSize:13,
+              }}>
+                <span>{car._mods.length>0?`${car._mods.length} mod${car._mods.length>1?"s":""} selected`:"Select Modifications"}</span>
+                <span style={{fontSize:10,color:"var(--muted2)",transform:modsOpenIdx===realIdx?"rotate(180deg)":"none",transition:"transform .2s"}}>▼</span>
               </button>
-            ))}
+              {car._mods.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:6}}>
+                {car._mods.map(m=>(
+                  <span key={m} style={{padding:"2px 8px",borderRadius:4,background:"rgba(230,26,26,.12)",color:"var(--accent)",fontSize:11,fontWeight:500}}>{m}</span>
+                ))}
+              </div>}
+              {modsOpenIdx===realIdx&&(
+                <div style={{marginTop:8,border:"1px solid var(--border)",borderRadius:10,overflow:"hidden"}}>
+                  {MOD_CATEGORIES.map((cat,ci)=>(
+                    <div key={cat.label} style={{borderBottom:ci<MOD_CATEGORIES.length-1?"1px solid var(--border)":"none"}}>
+                      <div style={{padding:"8px 12px",fontSize:11,fontWeight:700,color:"var(--muted2)",letterSpacing:.5,background:"var(--s2)",textTransform:"uppercase"}}>{cat.label}</div>
+                      <div style={{padding:"8px 10px",display:"flex",flexWrap:"wrap",gap:6}}>
+                        {cat.mods.map(mod=>{
+                          const on=car._mods.includes(mod);
+                          return(
+                            <button key={mod} onClick={()=>toggleMod(realIdx,mod)} style={{
+                              padding:"4px 10px",borderRadius:6,fontSize:12,cursor:"pointer",transition:"all .12s",
+                              border:`1px solid ${on?"var(--accent)":"var(--border)"}`,
+                              background:on?"rgba(230,26,26,.12)":"transparent",
+                              color:on?"var(--accent)":"var(--muted2)",fontWeight:on?600:400,
+                            }}>{mod}</button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        );
+      })}
 
-        <div>
-          <label className="inp-label">Modifications</label>
-          <textarea className="inp" rows={4} style={{resize:"vertical",lineHeight:1.6,fontFamily:"var(--font-mono)",fontSize:12}}
-            value={carForm.mods||""} onChange={e=>setC("mods",e.target.value)}
-            placeholder={"Cold air intake\nCoilover suspension\nMagnaflow catback\n..."}/>
-        </div>
+      <div style={{padding:"0 16px",marginBottom:16}}>
+        <button onClick={addCar} style={{width:"100%",padding:"11px",borderRadius:10,border:"1px dashed var(--border)",background:"transparent",color:"var(--muted2)",fontSize:13,cursor:"pointer"}}>
+          + Add Another Vehicle
+        </button>
       </div>
 
       {/* Identity */}
