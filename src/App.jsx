@@ -4,7 +4,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import AuthPage from "./components/AuthPage.jsx";
 import LandingPage from "./components/LandingPage.jsx";
-import logoImg from "./assets/logo.png";
+import logoImg from "./assets/logo-transparent.png";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
