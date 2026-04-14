@@ -129,6 +129,12 @@ function profileFromRow(row) {
     mapVisible: row.map_visible??true,
     bannerUrl: row.banner_url||"",
     hasAccess: row.has_access??false,
+    times: {
+      zero_sixty:    row.zero_sixty    ? String(row.zero_sixty)    : "",
+      zero_120:      row.zero_120      ? String(row.zero_120)      : "",
+      quarter_mile:  row.quarter_mile  ? String(row.quarter_mile)  : "",
+      half_mile:     row.half_mile     ? String(row.half_mile)     : "",
+    },
   };
 }
 
@@ -900,7 +906,7 @@ export default function App() {
         supabase.from("groups").select("*, group_members(user_id, role, status)"),
         supabase.from("user_cars").select("*").eq("user_id", userId).order("is_primary", {ascending:false}),
         supabase.from("user_cars").select("user_id,year,make,model").eq("is_primary", true),
-        supabase.from("friends").select("user_id,friend_id").or(`user_id.eq.${userId},friend_id.eq.${userId}`).eq("status","accepted").catch(()=>({data:[]})),
+        supabase.from("friends").select("user_id,friend_id").or(`user_id.eq.${userId},friend_id.eq.${userId}`).eq("status","accepted").then(r=>r).catch(()=>({data:[]})),
       ]);
 
       if (profileRes.data) setMyProfile(profileFromRow(profileRes.data));
@@ -2951,12 +2957,19 @@ function EditProfile({ myProfile, setMyProfile, myCars, setMyCars, setMyCar, use
         if(e) throw e;
         avatarUrl=supabase.storage.from("car-photos").getPublicUrl(path).data.publicUrl;
       }
-      const{error:profErr}=await supabase.from("profiles").update({
+      const times=form.times||{};
+      const{data:profUpdated,error:profErr}=await supabase.from("profiles").update({
         display_name:form.displayName, show_real_name:form.showRealName,
         city:form.city, instagram:form.instagram, avatar_initials:form.avatar,
         banner_url:bannerUrl||null, avatar_url:avatarUrl||null,
-      }).eq("id",userId);
+        zero_sixty:    times.zero_sixty    ? parseFloat(times.zero_sixty)    : null,
+        zero_120:      times.zero_120      ? parseFloat(times.zero_120)      : null,
+        quarter_mile:  times.quarter_mile  ? parseFloat(times.quarter_mile)  : null,
+        half_mile:     times.half_mile     ? parseFloat(times.half_mile)     : null,
+      }).eq("id",userId).select();
       if(profErr) throw profErr;
+      console.log("[handleSave] profiles update result:", profUpdated);
+      if(!profUpdated?.length) throw new Error("Profile save was blocked — check Supabase RLS policies (profiles table needs an UPDATE policy for authenticated users).");
 
       const savedCars=[];
       for(const [i,car] of cars.entries()){
@@ -2981,8 +2994,9 @@ function EditProfile({ myProfile, setMyProfile, myCars, setMyCars, setMyCar, use
           is_primary:car.isPrimary||false,
         };
         if(car.id){
-          const{error:e}=await supabase.from("user_cars").update(payload).eq("id",car.id);
+          const{data:carUpdated,error:e}=await supabase.from("user_cars").update(payload).eq("id",car.id).select();
           if(e) throw e;
+          if(!carUpdated?.length) throw new Error("Car save was blocked — check Supabase RLS policies (user_cars table needs an UPDATE policy for authenticated users).");
           savedCars.push({...carFromRow({...payload,id:car.id,photos:payload.photos,is_primary:payload.is_primary}),isPrimary:car.isPrimary});
         } else {
           const{data:ins,error:e}=await supabase.from("user_cars").insert(payload).select("id").single();
@@ -2990,7 +3004,7 @@ function EditProfile({ myProfile, setMyProfile, myCars, setMyCars, setMyCar, use
           savedCars.push({...carFromRow({...payload,id:ins?.id,photos:payload.photos,is_primary:payload.is_primary}),isPrimary:car.isPrimary});
         }
       }
-      setMyProfile(p=>({...p,displayName:form.displayName,showRealName:form.showRealName,city:form.city,instagram:form.instagram,avatar:form.avatar,avatarUrl,socials:{...p.socials,instagram:form.instagram},bannerUrl}));
+      setMyProfile(p=>({...p,displayName:form.displayName,showRealName:form.showRealName,city:form.city,instagram:form.instagram,avatar:form.avatar,avatarUrl,socials:{...p.socials,instagram:form.instagram},bannerUrl,times:form.times||p.times}));
       setMyCars(savedCars);
       const primary=savedCars.find(c=>c.isPrimary)||savedCars[0];
       if(primary) setMyCar(primary);
