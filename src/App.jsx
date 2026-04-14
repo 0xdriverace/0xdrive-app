@@ -4,7 +4,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import AuthPage from "./components/AuthPage.jsx";
 import LandingPage from "./components/LandingPage.jsx";
-import logoImg from "./assets/logo-transparent.png";
+import logoImg from "./assets/logo.png";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -554,7 +554,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);min-hei
 function Logo({ sidebarVariant = false }) {
   const h = sidebarVariant ? 36 : 44;
   return (
-    <img src={logoImg} alt="0x" style={{height:h, width:"auto", display:"block", flexShrink:0}} />
+    <img src={logoImg} alt="0x" style={{height:h, width:"auto", display:"block", flexShrink:0, mixBlendMode:"screen"}} />
   );
 }
 
