@@ -617,14 +617,14 @@ function CreateLobbyModal({ myProfile, groups, onClose, onCreate }) {
   const myGroups = groups.filter(g=>g.memberIds.includes(myProfile.id));
   const [form, setForm] = useState({
     name: "", type: "Cruising", isOpen: true,
-    groupId: "", destination: "", micActive: false,
+    groupId: "", destination: "", destLat: null, destLng: null, micActive: false,
   });
   const [saving, setSaving] = useState(false);
   const [destSuggestions, setDestSuggestions] = useState([]);
   const destDebounce = useRef(null);
 
   const handleDestInput = (val) => {
-    setForm(f=>({...f,destination:val}));
+    setForm(f=>({...f, destination:val, destLat:null, destLng:null}));
     setDestSuggestions([]);
     if (destDebounce.current) clearTimeout(destDebounce.current);
     if (!val.trim()||val.length<2) return;
@@ -633,7 +633,10 @@ function CreateLobbyModal({ myProfile, groups, onClose, onCreate }) {
         const proximity = myProfile.lat&&myProfile.lng ? `&proximity=${myProfile.lng},${myProfile.lat}` : "";
         const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(val)}.json?access_token=${MAPBOX_TOKEN}&autocomplete=true&limit=5${proximity}`);
         const data = await res.json();
-        setDestSuggestions((data.features||[]).map(f=>({name:f.place_name,short:f.text})));
+        setDestSuggestions((data.features||[]).map(f=>({
+          name: f.place_name, short: f.text,
+          lat: f.center?.[1]??null, lng: f.center?.[0]??null,
+        })));
       } catch(_){}
     }, 350);
   };
@@ -698,7 +701,7 @@ function CreateLobbyModal({ myProfile, groups, onClose, onCreate }) {
           {destSuggestions.length>0&&(
             <div style={{position:"absolute",left:0,right:0,background:"var(--s2)",border:"1px solid var(--border)",borderRadius:10,marginTop:4,zIndex:999,overflow:"hidden"}}>
               {destSuggestions.map((s,i)=>(
-                <div key={i} onClick={()=>{setForm(f=>({...f,destination:s.name}));setDestSuggestions([]);}}
+                <div key={i} onClick={()=>{setForm(f=>({...f,destination:s.name,destLat:s.lat,destLng:s.lng}));setDestSuggestions([]);}}
                   style={{padding:"10px 14px",cursor:"pointer",borderBottom:i<destSuggestions.length-1?"1px solid var(--border)":undefined}}>
                   <div style={{fontSize:13,fontWeight:600,color:"var(--text)"}}>{s.short}</div>
                   <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>{s.name}</div>
@@ -1025,8 +1028,8 @@ export default function App() {
           setLobbies(lobbyData.map(l => ({
             id: l.id, name: l.name, type: l.type||"Cruising",
             isOpen: l.is_open??true, groupId: l.group_id||null,
-            destination: l.destination||null, createdBy: l.created_by,
-            lat: l.lat??null, lng: l.lng??null,
+            destination: l.destination||null, destLat: l.dest_lat??null, destLng: l.dest_lng??null,
+            createdBy: l.created_by, lat: l.lat??null, lng: l.lng??null,
             memberIds: (l.lobby_members||[]).filter(m=>m.status==="active").map(m=>m.user_id),
             pendingRequests: (l.lobby_members||[]).filter(m=>m.status==="pending").map(m=>m.user_id),
             micUsers: (l.lobby_members||[]).filter(m=>m.mic_active).map(m=>m.user_id),
@@ -1106,8 +1109,8 @@ export default function App() {
     const lobbyData = {
       id: `local-${Date.now()}`, name: form.name.trim(),
       type: form.type, isOpen: form.isOpen, groupId: form.groupId||null,
-      destination: form.destination||null, createdBy: myId,
-      lat: myProfile.lat, lng: myProfile.lng,
+      destination: form.destination||null, destLat: form.destLat||null, destLng: form.destLng||null,
+      createdBy: myId, lat: myProfile.lat, lng: myProfile.lng,
       memberIds: [myId], pendingRequests: [], micUsers: [],
       createdAt: new Date().toISOString(),
     };
@@ -1116,6 +1119,7 @@ export default function App() {
       const { data: dbLobby } = await supabase.from("lobbies").insert({
         name: lobbyData.name, type: lobbyData.type, is_open: lobbyData.isOpen,
         group_id: lobbyData.groupId||null, destination: lobbyData.destination||null,
+        dest_lat: lobbyData.destLat, dest_lng: lobbyData.destLng,
         created_by: myId, lat: myProfile.lat, lng: myProfile.lng, is_active: true,
       }).select().single();
       if (dbLobby) {
@@ -1537,12 +1541,28 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
   const [memberLocations, setMemberLocations] = useState({});
   const [mySpeed, setMySpeed] = useState(null);
   const [followMe, setFollowMe] = useState(false);
+  const [directions, setDirections] = useState(null); // {steps, distanceMi, durationMin}
+  const [currentStep, setCurrentStep] = useState(0);
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [micOn, setMicOn] = useState(false);
   const [micError, setMicError] = useState("");
   const [gpsError, setGpsError] = useState("");
+  // Race mode
+  const [raceState, setRaceState] = useState("idle"); // idle | countdown | racing | finished
+  const [raceCountdown, setRaceCountdown] = useState(3);
+  const [raceFormat, setRaceFormat] = useState("quarter_mile");
+  // Keep ref in sync so GPS callback never reads stale state
+  useEffect(()=>{ raceFormatRef.current = raceFormat; }, [raceFormat]);
+  const [raceResults, setRaceResults] = useState({}); // {userId: {ms, position}}
+  const [myRaceMs, setMyRaceMs] = useState(null);
+  const raceStartTimeRef = useRef(null);
+  const raceStartPosRef = useRef(null);
+  const raceDistRef = useRef(0); // accumulated miles
+  const raceFinishedRef = useRef(false);
+  const raceSessionIdRef = useRef(null);
+  const raceFormatRef = useRef("quarter_mile"); // ref so GPS callback always sees current value
   const agoraClientRef = useRef(null);
   const agoraTrackRef = useRef(null);
   const chatEndRef = useRef(null);
@@ -1552,7 +1572,7 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
   const memberMarkersRef = useRef({});
-  const lastPosRef = useRef(null); // for calculating speed from position delta
+  const lastPosRef = useRef(null);
 
   useEffect(()=>{
     if (!l?.memberIds?.length) return;
@@ -1580,6 +1600,70 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
     mapRef.current.addControl(new mapboxgl.NavigationControl(),"top-right");
     return ()=>{ if(mapRef.current){mapRef.current.remove();mapRef.current=null;} };
   }, [inLobby, lobbyId]);
+
+  // Fetch + draw directions when map is ready and lobby has a destination
+  useEffect(()=>{
+    if (!inLobby||!l?.destLat||!l?.destLng) return;
+    const myLat = myProfile.lat;
+    const myLng = myProfile.lng;
+    if (!myLat||!myLng) return;
+    fetch(`https://api.mapbox.com/directions/v5/mapbox/driving/${myLng},${myLat};${l.destLng},${l.destLat}?steps=true&geometries=geojson&access_token=${MAPBOX_TOKEN}`)
+      .then(r=>r.json())
+      .then(data=>{
+        const route = data.routes?.[0];
+        if (!route) return;
+        const steps = route.legs?.[0]?.steps?.map(s=>({
+          instruction: s.maneuver?.instruction||"",
+          distanceMi: (s.distance*0.000621371).toFixed(2),
+        }))||[];
+        setDirections({
+          steps,
+          distanceMi: (route.distance*0.000621371).toFixed(1),
+          durationMin: Math.round(route.duration/60),
+          geometry: route.geometry,
+        });
+        setCurrentStep(0);
+        // Draw route on map once it's loaded
+        const drawRoute = () => {
+          if (!mapRef.current) return;
+          if (mapRef.current.getSource("route")) {
+            mapRef.current.getSource("route").setData(route.geometry);
+            return;
+          }
+          mapRef.current.addSource("route",{type:"geojson",data:route.geometry});
+          mapRef.current.addLayer({
+            id:"route",type:"line",source:"route",
+            layout:{"line-join":"round","line-cap":"round"},
+            paint:{"line-color":"#e61a1a","line-width":4,"line-opacity":0.85},
+          });
+          // Destination marker
+          const el = document.createElement("div");
+          el.style.cssText="width:20px;height:20px;background:#e61a1a;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.5);";
+          new mapboxgl.Marker({element:el}).setLngLat([l.destLng,l.destLat]).addTo(mapRef.current);
+          // Fit map to route
+          const coords = route.geometry.coordinates;
+          const bounds = coords.reduce((b,[lng,lat])=>b.extend([lng,lat]),new mapboxgl.LngLatBounds(coords[0],coords[0]));
+          mapRef.current.fitBounds(bounds,{padding:40});
+        };
+        if (mapRef.current?.isStyleLoaded()) drawRoute();
+        else mapRef.current?.on("load", drawRoute);
+      }).catch(()=>{});
+  // Re-fetch when my location updates (coarse — only when coords change significantly)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inLobby, lobbyId, l?.destLat, l?.destLng, !!myProfile.lat]);
+
+  // Update current turn-by-turn step based on my location
+  useEffect(()=>{
+    if (!directions?.steps?.length||!myProfile.lat||!myProfile.lng) return;
+    // Find the closest upcoming step
+    let closest = currentStep;
+    for (let i=currentStep; i<directions.steps.length-1; i++) {
+      // crude: advance step when we've been "on" this one a while — rely on user tapping next or auto on GPS proximity
+      closest = i; break;
+    }
+    setCurrentStep(closest);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myProfile.lat, myProfile.lng]);
 
   // Update member markers on map when locations change
   useEffect(()=>{
@@ -1618,7 +1702,43 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
           setMemberLocations(prev=>({...prev,[p.userId]:{lat:p.lat,lng:p.lng}}));
         }
       }
-    }).subscribe((status)=>{
+    })
+    .on("broadcast",{event:"race_start"},(payload)=>{
+      const p = payload.payload;
+      // Everyone in lobby receives the race start signal
+      setRaceFormat(p.format||"quarter_mile");
+      setRaceResults({});
+      setMyRaceMs(null);
+      raceFinishedRef.current = false;
+      raceDistRef.current = 0;
+      raceStartPosRef.current = null;
+      raceSessionIdRef.current = p.sessionId||null;
+      // Start countdown
+      setRaceState("countdown");
+      setRaceCountdown(3);
+      let c = 3;
+      const iv = setInterval(()=>{
+        c--;
+        setRaceCountdown(c);
+        if (c <= 0) {
+          clearInterval(iv);
+          raceStartTimeRef.current = Date.now();
+          raceStartPosRef.current = lastPosRef.current;
+          setRaceState("racing");
+        }
+      }, 1000);
+    })
+    .on("broadcast",{event:"race_finish"},(payload)=>{
+      const p = payload.payload;
+      if (p.userId !== myProfile.id) {
+        setRaceResults(prev=>({...prev,[p.userId]:{ms:p.ms,position:p.position}}));
+      }
+    })
+    .on("broadcast",{event:"race_cancel"},(()=>{
+      setRaceState("idle"); setRaceResults({}); setMyRaceMs(null);
+      raceFinishedRef.current=false; raceDistRef.current=0; raceStartTimeRef.current=null;
+    }))
+    .subscribe((status)=>{
       if (status==="CHANNEL_ERROR") setGpsError("Live connection error. Reload to reconnect.");
     });
 
@@ -1651,6 +1771,48 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
         setMemberSpeeds(prev=>({...prev,[myProfile.id]:mph}));
         setMemberLocations(prev=>({...prev,[myProfile.id]:{lat,lng}}));
         ch.send({type:"broadcast",event:"speed",payload:{userId:myProfile.id,mph,lat,lng}});
+
+        // ── Race tracking ──────────────────────────────────────
+        if (raceStartTimeRef.current && !raceFinishedRef.current) {
+          const acc = pos.coords.accuracy;
+          // Skip bad GPS fixes (>20m accuracy)
+          if (acc <= 20 && raceStartPosRef.current) {
+            const prev = raceStartPosRef.current;
+            const incr = haversine(prev.lat, prev.lng, lat, lng); // miles
+            // Cap per-update increment at 0.05mi to filter GPS jumps
+            if (incr > 0 && incr < 0.05) {
+              raceDistRef.current += incr;
+            }
+          }
+          // Update start pos for next delta even if we skipped
+          if (!raceStartPosRef.current) raceStartPosRef.current = {lat, lng};
+
+          // Determine target distance in miles
+          const fmt = raceFormatRef.current;
+          const targets = {quarter_mile:0.25, half_mile:0.5};
+          const target = targets[fmt];
+          const elapsedMs = Date.now() - raceStartTimeRef.current;
+
+          // Speed threshold races: 0-60 and 0-120
+          const hitSpeed = (fmt==="zero_sixty"&&mph>=60) || (fmt==="zero_120"&&mph>=120);
+          const hitDist = target && raceDistRef.current >= target;
+
+          if (hitSpeed || hitDist) {
+            raceFinishedRef.current = true;
+            setMyRaceMs(elapsedMs);
+            setRaceState("finished");
+            // Broadcast my finish to lobby
+            ch.send({type:"broadcast",event:"race_finish",payload:{userId:myProfile.id,ms:elapsedMs,position:1}});
+            // Save to DB
+            if (raceSessionIdRef.current) {
+              supabase.from("race_participants").upsert({
+                race_id: raceSessionIdRef.current, user_id: myProfile.id,
+                car_id: myCar?.id||null, elapsed_ms: elapsedMs,
+                finished_at: new Date().toISOString(),
+              },{onConflict:"race_id,user_id"}).catch(()=>{});
+            }
+          }
+        }
       },
       (err)=>{
         if (err.code===1) setGpsError("GPS permission denied. Allow location access to broadcast your speed.");
@@ -1730,6 +1892,92 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
     const newPts = (myProfile.points||0) + 1;
     supabase.from("profiles").update({points:newPts}).eq("id",myProfile.id);
   };
+
+  // ── Race control functions ──────────────────────────────────
+  const startRace = async (format) => {
+    if (!speedChannelRef.current) return;
+    setRaceFormat(format);
+    // Create race session in DB
+    let sessionId = null;
+    try {
+      const {data} = await supabase.from("race_sessions").insert({
+        lobby_id: lobbyId, format, created_by: myProfile.id,
+      }).select().single();
+      sessionId = data?.id||null;
+      raceSessionIdRef.current = sessionId;
+    } catch(_){}
+    // Broadcast start to all lobby members
+    speedChannelRef.current.send({type:"broadcast",event:"race_start",payload:{format,sessionId}});
+    // Also trigger locally (self:false so we need to handle ourselves)
+    setRaceResults({});
+    setMyRaceMs(null);
+    raceFinishedRef.current = false;
+    raceDistRef.current = 0;
+    raceStartPosRef.current = lastPosRef.current;
+    setRaceState("countdown");
+    setRaceCountdown(3);
+    let c = 3;
+    const iv = setInterval(()=>{
+      c--;
+      setRaceCountdown(c);
+      if (c <= 0) {
+        clearInterval(iv);
+        raceStartTimeRef.current = Date.now();
+        raceStartPosRef.current = lastPosRef.current;
+        setRaceState("racing");
+      }
+    }, 1000);
+  };
+
+  const cancelRace = () => {
+    if (speedChannelRef.current) speedChannelRef.current.send({type:"broadcast",event:"race_cancel",payload:{}});
+    setRaceState("idle"); setRaceResults({}); setMyRaceMs(null);
+    raceFinishedRef.current=false; raceDistRef.current=0; raceStartTimeRef.current=null;
+  };
+
+  // Resolve winner when results come in
+  const allResults = myRaceMs!=null
+    ? {...raceResults,[myProfile.id]:{ms:myRaceMs}}
+    : raceResults;
+  const sortedRacers = Object.entries(allResults).sort((a,b)=>a[1].ms-b[1].ms);
+  const winnerId = sortedRacers[0]?.[0]||null;
+
+  // Auto-save winner stats when race finishes and all known members have results
+  useEffect(()=>{
+    if (raceState!=="finished"||!myRaceMs||!raceSessionIdRef.current) return;
+    const membersInRace = Object.keys(allResults);
+    if (membersInRace.length < 2) return; // wait for at least 2 results
+    const winner = sortedRacers[0]?.[0];
+    const myPos = sortedRacers.findIndex(([id])=>id===myProfile.id)+1;
+    // Update positions in DB
+    sortedRacers.forEach(([uid,],i)=>{
+      supabase.from("race_participants").update({position:i+1}).eq("race_id",raceSessionIdRef.current).eq("user_id",uid).catch(()=>{});
+    });
+    // Finish the session
+    supabase.from("race_sessions").update({status:"finished",finished_at:new Date().toISOString()}).eq("id",raceSessionIdRef.current).catch(()=>{});
+    // Award win/race to current user via existing handler
+    if (myPos===1) {
+      supabase.from("profiles").update({
+        wins: {...(myProfile.wins||{}), h2h: ((myProfile.wins?.h2h||0)+1)},
+        races: {...(myProfile.races||{}), h2h: ((myProfile.races?.h2h||0)+1)},
+        points: (myProfile.points||0)+5,
+      }).eq("id",myProfile.id).catch(()=>{});
+    } else {
+      supabase.from("profiles").update({
+        races: {...(myProfile.races||{}), h2h: ((myProfile.races?.h2h||0)+1)},
+      }).eq("id",myProfile.id).catch(()=>{});
+    }
+    // Save best time to race_times table if better than existing
+    const secs = parseFloat((myRaceMs/1000).toFixed(3));
+    const timeKey = {quarter_mile:"quarter_mile",half_mile:"half_mile",zero_sixty:"zero_sixty",zero_120:"zero_120"}[raceFormatRef.current];
+    if (timeKey) {
+      supabase.from("race_times").upsert({
+        user_id: myProfile.id, car_id: myCar?.id||null,
+        [timeKey]: secs,
+      },{onConflict:"user_id,car_id"}).catch(()=>{});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [raceState, Object.keys(allResults).length]);
 
   // Keep audio context alive when app goes to background (mobile workaround)
   // Plays a silent loop so iOS/Android don't suspend the audio context
@@ -1910,10 +2158,132 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
             ))}
           </div>
 
+          {/* Directions panel */}
+          {directions && (
+            <>
+              <div className="sec-lbl" style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingRight:16}}>
+                <span>Directions → {l.destination}</span>
+                <span style={{fontSize:11,color:"var(--muted)",fontWeight:400}}>{directions.distanceMi} mi · {directions.durationMin} min</span>
+              </div>
+              <div style={{margin:"0 16px 8px",background:"var(--s2)",borderRadius:10,border:"1px solid var(--border)",overflow:"hidden"}}>
+                {/* Current step */}
+                <div style={{padding:"12px 14px",borderBottom:"1px solid var(--border)",background:"rgba(230,26,26,.06)"}}>
+                  <div style={{fontSize:11,color:"var(--accent)",fontWeight:700,marginBottom:4,letterSpacing:.5}}>NEXT TURN</div>
+                  <div style={{fontSize:14,fontWeight:600,color:"var(--text)",lineHeight:1.3}}>{directions.steps[currentStep]?.instruction||"Head to destination"}</div>
+                  {directions.steps[currentStep]?.distanceMi&&<div style={{fontSize:11,color:"var(--muted)",marginTop:4}}>in {directions.steps[currentStep].distanceMi} mi</div>}
+                </div>
+                {/* Step list (collapsed — show 3 upcoming) */}
+                {directions.steps.slice(currentStep+1,currentStep+4).map((s,i)=>(
+                  <div key={i} style={{padding:"9px 14px",borderBottom:i<2?"1px solid var(--border)":undefined,display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{width:6,height:6,borderRadius:"50%",background:"var(--border2)",flexShrink:0}}/>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:12,color:"var(--text2)"}}>{s.instruction}</div>
+                      <div style={{fontSize:10,color:"var(--muted2)",marginTop:2}}>{s.distanceMi} mi</div>
+                    </div>
+                  </div>
+                ))}
+                <div style={{display:"flex",gap:6,padding:"8px 12px"}}>
+                  <button className="btn btn-secondary btn-sm" onClick={()=>setCurrentStep(s=>Math.max(0,s-1))} disabled={currentStep===0}>◀ Prev</button>
+                  <button className="btn btn-primary btn-sm" onClick={()=>setCurrentStep(s=>Math.min(directions.steps.length-1,s+1))} disabled={currentStep>=directions.steps.length-1}>Next ▶</button>
+                </div>
+              </div>
+            </>
+          )}
+
           <div className="sec-lbl">Live Map</div>
           <div className="map-wrap" style={{height:220}}>
             <div ref={mapContainer} style={{width:"100%",height:"100%"}}/>
           </div>
+
+          {/* Race Mode */}
+          <div className="sec-lbl" style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingRight:16}}>
+            <span>Race Mode</span>
+            {raceState!=="idle"&&isMyLobby&&<button className="btn btn-secondary btn-sm" style={{fontSize:10}} onClick={cancelRace}>Cancel</button>}
+          </div>
+
+          {raceState==="idle" && (
+            <div style={{margin:"0 16px 10px",background:"var(--s2)",borderRadius:12,border:"1px solid var(--border)",padding:"14px"}}>
+              <div style={{fontSize:12,color:"var(--muted)",marginBottom:10}}>Both phones need GPS active. Host taps a format to start a synced countdown for everyone in the lobby.</div>
+              {[
+                {key:"quarter_mile", label:"¼ Mile", desc:"0.25 mi drag", icon:"🏁"},
+                {key:"half_mile",    label:"½ Mile", desc:"0.5 mi run",   icon:"🛣"},
+                {key:"zero_sixty",   label:"0–60",   desc:"0 to 60 mph",  icon:"⚡"},
+                {key:"zero_120",     label:"0–120",  desc:"0 to 120 mph", icon:"🚀"},
+              ].map(f=>(
+                <button key={f.key} disabled={!isMyLobby}
+                  onClick={()=>startRace(f.key)}
+                  style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"11px 12px",marginBottom:6,background:"var(--s3)",border:"1px solid var(--border)",borderRadius:10,cursor:isMyLobby?"pointer":"default",color:"var(--text)",opacity:isMyLobby?1:0.5,textAlign:"left"}}>
+                  <span style={{fontSize:20}}>{f.icon}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:14,fontWeight:700}}>{f.label}</div>
+                    <div style={{fontSize:11,color:"var(--muted)"}}>{f.desc}</div>
+                  </div>
+                  {isMyLobby&&<span style={{fontSize:11,color:"var(--accent)",fontWeight:600}}>START →</span>}
+                </button>
+              ))}
+              {!isMyLobby&&<div style={{fontSize:11,color:"var(--muted2)",textAlign:"center",marginTop:4}}>Waiting for host to start a race…</div>}
+            </div>
+          )}
+
+          {(raceState==="countdown"||raceState==="racing") && (
+            <div style={{margin:"0 16px 10px",background:"var(--s2)",borderRadius:12,border:`2px solid ${raceState==="racing"?"var(--green)":"var(--accent)"}`,padding:"24px 16px",textAlign:"center"}}>
+              {raceState==="countdown" ? (
+                <>
+                  <div style={{fontSize:72,fontWeight:900,fontFamily:"var(--font-display)",color:"var(--accent)",lineHeight:1}}>{raceCountdown||"GO!"}</div>
+                  <div style={{fontSize:13,color:"var(--muted)",marginTop:8}}>Get ready…</div>
+                </>
+              ) : (
+                <>
+                  <div style={{fontSize:14,fontWeight:700,color:"var(--green)",marginBottom:8}}>🟢 RACING — {raceFormat.replace(/_/g," ").toUpperCase()}</div>
+                  {members.map(m=>{
+                    const res = allResults[m.id];
+                    const pct = raceFormat==="quarter_mile"||raceFormat==="half_mile"
+                      ? Math.min(100, m.id===myProfile.id ? (raceDistRef.current/(raceFormat==="half_mile"?0.5:0.25))*100 : (res?100:0))
+                      : m.id===myProfile.id ? Math.min(100,((memberSpeeds[m.id]||0)/(raceFormat==="zero_sixty"?60:120))*100) : (res?100:0);
+                    return (
+                      <div key={m.id} style={{marginBottom:8}}>
+                        <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                          <span style={{fontSize:12,fontWeight:600}}>@{m.username}</span>
+                          <span style={{fontSize:11,color:"var(--muted)"}}>{res?`${(res.ms/1000).toFixed(3)}s`:"racing…"}</span>
+                        </div>
+                        <div style={{height:8,background:"var(--s3)",borderRadius:4,overflow:"hidden"}}>
+                          <div style={{height:"100%",width:`${pct}%`,background:res?"var(--green)":"var(--accent)",borderRadius:4,transition:"width .3s"}}/>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          )}
+
+          {raceState==="finished" && (
+            <div style={{margin:"0 16px 10px",background:"var(--s2)",borderRadius:12,border:"2px solid var(--green)",padding:"16px"}}>
+              <div style={{fontSize:14,fontWeight:700,color:"var(--green)",marginBottom:10,textAlign:"center"}}>🏁 Race Complete</div>
+              {sortedRacers.map(([uid, res], i)=>{
+                const u = getU(uid, allUsers, myProfile);
+                const isWinner = i===0;
+                return (
+                  <div key={uid} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",marginBottom:6,background:isWinner?"rgba(0,192,96,.08)":"var(--s3)",borderRadius:10,border:`1px solid ${isWinner?"rgba(0,192,96,.3)":"var(--border)"}`}}>
+                    <span style={{fontSize:18,fontWeight:900,color:isWinner?"var(--green)":"var(--muted2)",width:24,textAlign:"center"}}>{i+1}</span>
+                    <Av user={u} size={28} isMe={uid===myProfile.id}/>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:700}}>@{u?.username||"?"}{uid===myProfile.id&&<span style={{fontSize:10,color:"var(--accent)",marginLeft:6}}>YOU</span>}</div>
+                      {memberCars[uid]&&<div style={{fontSize:10,color:"var(--muted)",fontFamily:"var(--font-mono)"}}>{memberCars[uid].str}</div>}
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:18,fontWeight:800,fontFamily:"var(--font-mono)",color:isWinner?"var(--green)":"var(--text)"}}>{(res.ms/1000).toFixed(3)}s</div>
+                      {isWinner&&<div style={{fontSize:10,color:"var(--green)",fontWeight:600}}>+5 pts</div>}
+                    </div>
+                  </div>
+                );
+              })}
+              {Object.keys(allResults).length < members.length && (
+                <div style={{fontSize:11,color:"var(--muted)",textAlign:"center",marginTop:6}}>Waiting for other racers…</div>
+              )}
+              <button className="btn btn-secondary btn-full" style={{marginTop:10,borderRadius:10}} onClick={()=>{setRaceState("idle");setRaceResults({});setMyRaceMs(null);}}>Race Again</button>
+            </div>
+          )}
         </>
       )}
 
