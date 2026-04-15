@@ -519,8 +519,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);min-hei
 .main-area{flex:1;min-width:0;display:flex;flex-direction:column}
 
 @media(min-width:768px){
-  html,body{overflow-x:hidden}
-  .app{max-width:100%;flex-direction:row;align-items:flex-start;min-height:100vh}
+  html,body{overflow-x:hidden;height:100%}
+  body{display:flex;flex-direction:column}
+  .app{max-width:100%;flex-direction:row;align-items:stretch;min-height:100vh;flex:1}
   .sidebar{
     display:flex;flex-direction:column;width:220px;height:100vh;
     position:sticky;top:0;flex-shrink:0;
@@ -547,18 +548,21 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans);min-hei
   .sidebar-bottom{padding:14px 20px;border-top:1px solid var(--border);flex-shrink:0}
   .hdr{display:none}
   .nav{display:none!important}
-  .main-area{max-width:720px;margin:0 auto;width:100%;padding:0 8px}
-  .content{padding:0 0 48px}
+  .main-area{flex:1;min-width:0;overflow-y:auto;height:100vh;display:flex;flex-direction:column;max-width:none;padding:0}
+  .content{flex:1;max-width:760px;margin:0 auto;width:100%;padding:0 0 60px}
   .pg-hdr{padding:28px 20px 16px}
   .pg-title{font-size:28px}
   .map-wrap{height:420px}
   .desktop-2col{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px;margin-bottom:8px}
   .desktop-2col .card{margin:0}
+  /* Modals centered on desktop */
+  .modal-overlay{align-items:center}
+  .modal-sheet{border-radius:20px;border:1px solid var(--border2);max-height:85vh;max-width:460px}
 }
 
 @media(min-width:1100px){
   .sidebar{width:240px}
-  .main-area{max-width:800px}
+  .content{max-width:860px}
 }
 `;
 
@@ -613,6 +617,83 @@ function BuildBadge({ stage }) {
 }
 
 /* ─── CREATE LOBBY MODAL ─────────────────────────────────── */
+/* ─── IMAGE CROP MODAL ───────────────────────────────────── */
+// aspect: e.g. {w:1,h:1} | {w:16,h:9} | {w:3,h:1}
+// shape: "circle" | "rect"
+function CropModal({ src, aspect = {w:1,h:1}, shape = "rect", onCancel, onCrop }) {
+  const FRAME = 280; // crop frame size (px) — square base
+  const frameW = FRAME;
+  const frameH = Math.round(FRAME * (aspect.h / aspect.w));
+
+  const [offset, setOffset] = useState({x:0, y:0});
+  const [scale, setScale] = useState(1);
+  const [naturalSize, setNaturalSize] = useState({w:1,h:1});
+  const imgRef = useRef();
+  const dragRef = useRef(null);
+
+  const onImgLoad = () => {
+    const img = imgRef.current;
+    const nw = img.naturalWidth, nh = img.naturalHeight;
+    setNaturalSize({w:nw,h:nh});
+    // Auto-fit: fill the crop frame
+    const fitScale = Math.max(frameW/nw, frameH/nh);
+    setScale(fitScale);
+    setOffset({x:0,y:0});
+  };
+
+  const onPointerDown = (e) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = {startX:e.clientX-offset.x, startY:e.clientY-offset.y};
+  };
+  const onPointerMove = (e) => {
+    if (!dragRef.current) return;
+    setOffset({x:e.clientX-dragRef.current.startX, y:e.clientY-dragRef.current.startY});
+  };
+  const onPointerUp = () => { dragRef.current = null; };
+
+  const applyCrop = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = frameW; canvas.height = frameH;
+    const ctx = canvas.getContext("2d");
+    if (shape==="circle") {
+      ctx.beginPath(); ctx.arc(frameW/2,frameH/2,Math.min(frameW,frameH)/2,0,Math.PI*2); ctx.clip();
+    }
+    const dispW = naturalSize.w * scale;
+    const dispH = naturalSize.h * scale;
+    const imgX = (frameW - dispW) / 2 + offset.x;
+    const imgY = (frameH - dispH) / 2 + offset.y;
+    ctx.drawImage(imgRef.current, imgX, imgY, dispW, dispH);
+    canvas.toBlob(blob => { if(blob) onCrop(blob, URL.createObjectURL(blob)); }, "image/jpeg", 0.92);
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.95)",zIndex:600,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:20}}>
+      <div style={{fontSize:13,fontWeight:600,color:"var(--text)",marginBottom:4}}>Drag to reposition · Slider to zoom</div>
+
+      {/* Crop viewport */}
+      <div style={{position:"relative",width:frameW,height:frameH,overflow:"hidden",borderRadius:shape==="circle"?"50%":"12px",border:"2px solid var(--accent)",cursor:"grab",flexShrink:0,background:"#111"}}
+        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerLeave={onPointerUp}>
+        <img ref={imgRef} src={src} onLoad={onImgLoad} draggable={false}
+          style={{position:"absolute",left:"50%",top:"50%",transform:`translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`,transformOrigin:"center",maxWidth:"none",userSelect:"none",pointerEvents:"none"}}/>
+      </div>
+
+      {/* Zoom slider */}
+      <div style={{display:"flex",alignItems:"center",gap:10,width:frameW}}>
+        <span style={{fontSize:11,color:"var(--muted)"}}>−</span>
+        <input type="range" min={0.3} max={3} step={0.01} value={scale}
+          onChange={e=>setScale(parseFloat(e.target.value))}
+          style={{flex:1,accentColor:"var(--accent)"}}/>
+        <span style={{fontSize:11,color:"var(--muted)"}}>+</span>
+      </div>
+
+      <div style={{display:"flex",gap:10,width:frameW}}>
+        <button className="btn btn-secondary btn-full" style={{borderRadius:10}} onClick={onCancel}>Cancel</button>
+        <button className="btn btn-primary btn-full" style={{borderRadius:10}} onClick={applyCrop}>Use Photo</button>
+      </div>
+    </div>
+  );
+}
+
 function CreateLobbyModal({ myProfile, groups, onClose, onCreate }) {
   const myGroups = groups.filter(g=>g.memberIds.includes(myProfile.id));
   const [form, setForm] = useState({
@@ -647,9 +728,9 @@ function CreateLobbyModal({ myProfile, groups, onClose, onCreate }) {
   };
 
   const submit = async () => {
-    if (!form.name.trim()) return;
+    const finalForm = form.name.trim() ? form : {...form, name: `${myProfile.displayName||"New"}'s Lobby`};
     setSaving(true);
-    await onCreate(form);
+    await onCreate(finalForm);
     setSaving(false);
     onClose();
   };
@@ -697,7 +778,7 @@ function CreateLobbyModal({ myProfile, groups, onClose, onCreate }) {
 
         <div style={{marginBottom:16,position:"relative"}}>
           <label className="inp-label">Planned Destination <span style={{fontWeight:400,color:"var(--muted2)",textTransform:"none",letterSpacing:0,fontSize:10}}>(optional)</span></label>
-          <input className="inp" value={form.destination} onChange={e=>handleDestInput(e.target.value)} placeholder="Search a place…" autoComplete="off"/>
+          <input className="inp" value={form.destination} onChange={e=>handleDestInput(e.target.value)} onBlur={()=>setTimeout(()=>setDestSuggestions([]),200)} placeholder="Search a place…" autoComplete="off"/>
           {destSuggestions.length>0&&(
             <div style={{position:"absolute",left:0,right:0,background:"var(--s2)",border:"1px solid var(--border)",borderRadius:10,marginTop:4,zIndex:999,overflow:"hidden"}}>
               {destSuggestions.map((s,i)=>(
@@ -712,7 +793,7 @@ function CreateLobbyModal({ myProfile, groups, onClose, onCreate }) {
         </div>
 
         <button className="btn btn-primary btn-full" style={{borderRadius:12,padding:14,marginBottom:8}}
-          disabled={!form.name.trim()||saving} onClick={submit}>
+          disabled={saving} onClick={submit}>
           {saving?"Creating…":"Go Live"}
         </button>
         <button className="btn btn-secondary btn-full" style={{borderRadius:12,padding:12}} onClick={onClose}>Cancel</button>
@@ -1569,6 +1650,14 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
   const [raceState, setRaceState] = useState("idle"); // idle | countdown | racing | finished
   const [raceCountdown, setRaceCountdown] = useState(3);
   const [raceFormat, setRaceFormat] = useState("quarter_mile");
+  const [rollFrom, setRollFrom] = useState(30);
+  const [rollTo, setRollTo] = useState(130);
+  const [rollCustomFrom, setRollCustomFrom] = useState("");
+  const [rollCustomTo, setRollCustomTo] = useState("");
+  const [rollShowCustom, setRollShowCustom] = useState(false);
+  const rollFromRef = useRef(30);
+  const rollToRef = useRef(130);
+  useEffect(()=>{ rollFromRef.current = rollFrom; rollToRef.current = rollTo; }, [rollFrom, rollTo]);
   // Keep ref in sync so GPS callback never reads stale state
   useEffect(()=>{ raceFormatRef.current = raceFormat; }, [raceFormat]);
   const [raceResults, setRaceResults] = useState({}); // {userId: {ms, position}}
@@ -1723,6 +1812,8 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
       const p = payload.payload;
       // Everyone in lobby receives the race start signal
       setRaceFormat(p.format||"quarter_mile");
+      if (p.rollFrom != null) { setRollFrom(p.rollFrom); rollFromRef.current = p.rollFrom; }
+      if (p.rollTo != null)   { setRollTo(p.rollTo);   rollToRef.current = p.rollTo; }
       setRaceResults({});
       setMyRaceMs(null);
       raceFinishedRef.current = false;
@@ -1738,7 +1829,7 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
         setRaceCountdown(c);
         if (c <= 0) {
           clearInterval(iv);
-          raceStartTimeRef.current = Date.now();
+          raceStartTimeRef.current = (p.format||"quarter_mile")==="roll" ? 0 : Date.now();
           raceStartPosRef.current = lastPosRef.current;
           setRaceState("racing");
         }
@@ -1807,6 +1898,32 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
           const fmt = raceFormatRef.current;
           const targets = {quarter_mile:0.25, half_mile:0.5};
           const target = targets[fmt];
+
+          // Roll race: timer starts when speed hits rollFrom, stops when speed hits rollTo
+          if (fmt==="roll") {
+            const from = rollFromRef.current;
+            const to   = rollToRef.current;
+            // If we haven't started timing yet and just hit the entry speed, mark start
+            if (raceStartTimeRef.current===0 && mph >= from) {
+              raceStartTimeRef.current = Date.now();
+            }
+            if (raceStartTimeRef.current && raceStartTimeRef.current!==0 && mph >= to) {
+              const elapsedMs = Date.now() - raceStartTimeRef.current;
+              raceFinishedRef.current = true;
+              setMyRaceMs(elapsedMs);
+              setRaceState("finished");
+              ch.send({type:"broadcast",event:"race_finish",payload:{userId:myProfile.id,ms:elapsedMs,position:1}});
+              if (raceSessionIdRef.current) {
+                supabase.from("race_participants").upsert({
+                  race_id: raceSessionIdRef.current, user_id: myProfile.id,
+                  car_id: myCar?.id||null, elapsed_ms: elapsedMs,
+                  finished_at: new Date().toISOString(),
+                },{onConflict:"race_id,user_id"}).catch(()=>{});
+              }
+            }
+            return; // skip the normal distance/speed logic below
+          }
+
           const elapsedMs = Date.now() - raceStartTimeRef.current;
 
           // Speed threshold races: 0-60 and 0-120
@@ -1923,7 +2040,7 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
       raceSessionIdRef.current = sessionId;
     } catch(_){}
     // Broadcast start to all lobby members
-    speedChannelRef.current.send({type:"broadcast",event:"race_start",payload:{format,sessionId}});
+    speedChannelRef.current.send({type:"broadcast",event:"race_start",payload:{format,sessionId,rollFrom:rollFromRef.current,rollTo:rollToRef.current}});
     // Also trigger locally (self:false so we need to handle ourselves)
     setRaceResults({});
     setMyRaceMs(null);
@@ -1938,7 +2055,8 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
       setRaceCountdown(c);
       if (c <= 0) {
         clearInterval(iv);
-        raceStartTimeRef.current = Date.now();
+        // Roll race: timer starts when speed hits rollFrom (set ref to 0 as sentinel)
+        raceStartTimeRef.current = raceFormatRef.current==="roll" ? 0 : Date.now();
         raceStartPosRef.current = lastPosRef.current;
         setRaceState("racing");
       }
@@ -2251,6 +2369,52 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
           {raceState==="idle" && (
             <div style={{margin:"0 16px 10px",background:"var(--s2)",borderRadius:12,border:"1px solid var(--border)",padding:"14px"}}>
               <div style={{fontSize:12,color:"var(--muted)",marginBottom:10}}>Both phones need GPS active. Host taps a format to start a synced countdown for everyone in the lobby.</div>
+
+              {/* ── Roll Race (top) ───────────────────────────── */}
+              <div style={{marginBottom:10,background:"var(--s3)",borderRadius:10,border:"1px solid var(--border)",padding:"12px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                  <span style={{fontSize:20}}>🌀</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:14,fontWeight:700}}>Roll Race</div>
+                    <div style={{fontSize:11,color:"var(--muted)"}}>Timer starts at entry speed, stops at exit speed</div>
+                  </div>
+                </div>
+                {/* Preset speed ranges */}
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+                  {[[20,80],[30,130],[40,140],[50,160],[60,160]].map(([f,t])=>(
+                    <button key={`${f}-${t}`}
+                      onClick={()=>{setRollFrom(f);setRollTo(t);rollFromRef.current=f;rollToRef.current=t;setRollShowCustom(false);}}
+                      style={{padding:"5px 10px",borderRadius:7,fontSize:11,fontWeight:700,cursor:"pointer",border:`1px solid ${rollFrom===f&&rollTo===t&&!rollShowCustom?"var(--accent)":"var(--border)"}`,background:rollFrom===f&&rollTo===t&&!rollShowCustom?"rgba(230,26,26,.15)":"transparent",color:rollFrom===f&&rollTo===t&&!rollShowCustom?"var(--accent)":"var(--muted2)"}}>
+                      {f}–{t}
+                    </button>
+                  ))}
+                  <button onClick={()=>setRollShowCustom(v=>!v)}
+                    style={{padding:"5px 10px",borderRadius:7,fontSize:11,fontWeight:700,cursor:"pointer",border:`1px solid ${rollShowCustom?"var(--accent)":"var(--border)"}`,background:rollShowCustom?"rgba(230,26,26,.15)":"transparent",color:rollShowCustom?"var(--accent)":"var(--muted2)"}}>
+                    Custom
+                  </button>
+                </div>
+                {/* Custom range inputs */}
+                {rollShowCustom&&(
+                  <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+                    <input type="number" min={1} max={299} value={rollCustomFrom}
+                      onChange={e=>{const v=Math.min(299,Math.max(1,+e.target.value||1));setRollCustomFrom(e.target.value);setRollFrom(v);rollFromRef.current=v;}}
+                      placeholder="From mph" className="inp" style={{flex:1,padding:"8px 10px",fontSize:13,textAlign:"center"}}/>
+                    <span style={{color:"var(--muted)",fontWeight:700}}>→</span>
+                    <input type="number" min={2} max={300} value={rollCustomTo}
+                      onChange={e=>{const v=Math.min(300,Math.max(2,+e.target.value||2));setRollCustomTo(e.target.value);setRollTo(v);rollToRef.current=v;}}
+                      placeholder="To mph" className="inp" style={{flex:1,padding:"8px 10px",fontSize:13,textAlign:"center"}}/>
+                  </div>
+                )}
+                <div style={{fontSize:12,color:"var(--muted2)",marginBottom:8,textAlign:"center"}}>
+                  Selected: <span style={{color:"var(--accent)",fontWeight:700}}>{rollFrom}–{rollTo} mph</span>
+                </div>
+                <button disabled={!isMyLobby} onClick={()=>startRace("roll")}
+                  style={{width:"100%",padding:"11px 12px",background:isMyLobby?"var(--accent)":"var(--s2)",border:"none",borderRadius:9,color:"#fff",fontSize:13,fontWeight:700,cursor:isMyLobby?"pointer":"default",opacity:isMyLobby?1:0.5}}>
+                  {isMyLobby?"START ROLL RACE →":"Waiting for host…"}
+                </button>
+              </div>
+
+              {/* ── Other formats ──────────────────────────────── */}
               {[
                 {key:"quarter_mile", label:"¼ Mile", desc:"0.25 mi drag", icon:"🏁"},
                 {key:"half_mile",    label:"½ Mile", desc:"0.5 mi run",   icon:"🛣"},
@@ -2281,11 +2445,16 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
                 </>
               ) : (
                 <>
-                  <div style={{fontSize:14,fontWeight:700,color:"var(--green)",marginBottom:8}}>🟢 RACING — {raceFormat.replace(/_/g," ").toUpperCase()}</div>
+                  <div style={{fontSize:14,fontWeight:700,color:"var(--green)",marginBottom:8}}>
+                    🟢 {raceFormat==="roll"?`ROLL RACE ${rollFrom}–${rollTo} mph`:raceFormat.replace(/_/g," ").toUpperCase()}
+                    {raceFormat==="roll"&&raceStartTimeRef.current===0&&<span style={{fontSize:11,color:"var(--accent)",marginLeft:8}}>Waiting for {rollFrom} mph…</span>}
+                  </div>
                   {members.map(m=>{
                     const res = allResults[m.id];
                     const pct = raceFormat==="quarter_mile"||raceFormat==="half_mile"
                       ? Math.min(100, m.id===myProfile.id ? (raceDistRef.current/(raceFormat==="half_mile"?0.5:0.25))*100 : (res?100:0))
+                      : raceFormat==="roll"
+                      ? (res ? 100 : m.id===myProfile.id ? Math.min(100,((Math.max(0,(memberSpeeds[m.id]||0)-rollFrom))/(rollTo-rollFrom))*100) : 0)
                       : m.id===myProfile.id ? Math.min(100,((memberSpeeds[m.id]||0)/(raceFormat==="zero_sixty"?60:120))*100) : (res?100:0);
                     return (
                       <div key={m.id} style={{marginBottom:8}}>
@@ -3870,6 +4039,7 @@ function EditProfile({ myProfile, setMyProfile, myCars, setMyCars, setMyCar, use
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [modsOpenIdx, setModsOpenIdx] = useState(null);
+  const [cropState, setCropState] = useState(null); // {src, aspect, shape, onCrop}
   const bannerRef = useRef(null);
   const profilePhotoRef = useRef(null);
   const fileRefs = useRef({});
@@ -3896,17 +4066,28 @@ function EditProfile({ myProfile, setMyProfile, myCars, setMyCars, setMyCar, use
   };
   const setPrimary=(idx)=>setCars(cs=>cs.map((c,i)=>({...c,isPrimary:i===idx})));
 
+  const blobToFile=(blob,name)=>new File([blob],name,{type:blob.type});
+
   const handleBannerSelect=(e)=>{
     const file=e.target.files?.[0]; if(!file) return;
-    setBannerFile(file); setBannerPreview(URL.createObjectURL(file));
+    e.target.value="";
+    setCropState({src:URL.createObjectURL(file),aspect:{w:3,h:1},shape:"rect",
+      onCrop:(blob,url)=>{ setBannerFile(blobToFile(blob,"banner.jpg")); setBannerPreview(url); setCropState(null); }
+    });
   };
   const handleProfilePhotoSelect=(e)=>{
     const file=e.target.files?.[0]; if(!file) return;
-    setProfilePhotoFile(file); setProfilePhotoPreview(URL.createObjectURL(file));
+    e.target.value="";
+    setCropState({src:URL.createObjectURL(file),aspect:{w:1,h:1},shape:"circle",
+      onCrop:(blob,url)=>{ setProfilePhotoFile(blobToFile(blob,"avatar.jpg")); setProfilePhotoPreview(url); setCropState(null); }
+    });
   };
   const handlePhotoSelect=(idx,e)=>{
     const file=e.target.files?.[0]; if(!file) return;
-    setC(idx,"_photoFile",file); setC(idx,"_photoPreview",URL.createObjectURL(file));
+    e.target.value="";
+    setCropState({src:URL.createObjectURL(file),aspect:{w:4,h:3},shape:"rect",
+      onCrop:(blob,url)=>{ setC(idx,"_photoFile",blobToFile(blob,"car.jpg")); setC(idx,"_photoPreview",url); setCropState(null); }
+    });
   };
 
   const handleSave=async()=>{
@@ -3990,6 +4171,7 @@ function EditProfile({ myProfile, setMyProfile, myCars, setMyCars, setMyCar, use
 
   return (
     <div className="fade">
+      {cropState && <CropModal src={cropState.src} aspect={cropState.aspect} shape={cropState.shape} onCancel={()=>setCropState(null)} onCrop={cropState.onCrop}/>}
       <button className="back-btn" onClick={onBack}>← Profile</button>
       <div className="pg-hdr" style={{paddingTop:0}}>
         <div className="pg-title">Edit Profile</div>
