@@ -2,31 +2,36 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { supabase } from "./lib/supabase.js";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import AgoraRTC from "agora-rtc-sdk-ng";
 import AuthPage from "./components/AuthPage.jsx";
 import LandingPage from "./components/LandingPage.jsx";
 import logoImg from "./assets/logo.png";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
+const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID;
 
 const GFONTS = `@import url('https://fonts.cdnfonts.com/css/pricedown');
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');`;
 
 /* ─── RANK TIERS ────────────────────────────────────────── */
+// Points-based rank system: earn points through activity
 const TIERS = [
-  { name:"Unranked", min:0,   max:2,   color:"#555",    bg:"#1a1a1a", border:"#2a2a2a", icon:"—" },
-  { name:"Bronze",   min:3,   max:9,   color:"#CD7F32", bg:"#1a1a1a", border:"#2a2a2a", icon:"⬡" },
-  { name:"Silver",   min:10,  max:24,  color:"#C0C0C0", bg:"#1a1a1a", border:"#2a2a2a", icon:"⬡" },
-  { name:"Gold",     min:25,  max:49,  color:"#f59e0b", bg:"#1a1a1a", border:"#2a2a2a", icon:"⬡" },
-  { name:"Platinum", min:50,  max:99,  color:"#22c55e", bg:"#1a1a1a", border:"#2a2a2a", icon:"⬡" },
-  { name:"Diamond",  min:100, max:Infinity, color:"#ef4444", bg:"#1a1a1a", border:"#2a2a2a", icon:"◆" },
+  { name:"Unranked", min:0,  max:24,  color:"#555",    bg:"#1a1a1a", border:"#2a2a2a", icon:"—" },
+  { name:"Bronze",   min:25, max:39,  color:"#CD7F32", bg:"#1a1a1a", border:"#2a2a2a", icon:"⬡" },
+  { name:"Silver",   min:40, max:74,  color:"#C0C0C0", bg:"#1a1a1a", border:"#2a2a2a", icon:"⬡" },
+  { name:"Gold",     min:75, max:99,  color:"#f59e0b", bg:"#1a1a1a", border:"#2a2a2a", icon:"⬡" },
+  { name:"Diamond",  min:100,max:Infinity, color:"#a78bfa", bg:"#1a1a1a", border:"#2a2a2a", icon:"◆" },
 ];
-const getTier = (wins) => TIERS.find(t => wins >= t.min && wins <= t.max) || TIERS[0];
+// Points earned per action:
+// Create group: 5pts | Join lobby: 3pts | Send chat message: 1pt
+// Add friend: 2pts  | Record a time: 3pts | Report a win: 5pts
+const getTier = (pts) => TIERS.find(t => pts >= t.min && pts <= t.max) || TIERS[0];
 
 const FORMAT = [
-  {key:"h2h",  label:"Head to Head", short:"H2H",   icon:"⚔"},
-  {key:"group",label:"Group Race",   short:"Group",  icon:"◈"},
-  {key:"trial",label:"Time Trial",   short:"Trial",  icon:"◎"},
-  {key:"drag", label:"Drag",         short:"Drag",   icon:"↑"},
+  {key:"h2h",  label:"Roll Races",     short:"Roll",    icon:"🏁"},
+  {key:"group",label:"Drag",           short:"Drag",    icon:"⚡"},
+  {key:"trial",label:"Time Trial",     short:"Trial",   icon:"◎", comingSoon: true},
+  {key:"drag", label:"Lobbies Joined", short:"Lobbies", icon:"📡", isLobbies: true},
 ];
 
 const RACE_TIMES = [
@@ -75,6 +80,7 @@ const BLANK_PROFILE = {
   times: {half_mile:"", quarter_mile:"", zero_sixty:"", zero_120:""},
   socials: {instagram:"", twitter:"", youtube:""},
   instagram: "", lat: null, lng: null, mapVisible: true, bannerUrl: "",
+  points: 0, hasAccess: false,
 };
 
 const GROUP_THEMES = ["#e61a1a","#0066ff","#00c060","#f59e0b","#a855f7","#ec4899","#06b6d4","#ffffff"];
@@ -106,8 +112,8 @@ function getU(id, allUsers, myProfile) {
 
 function computeRanks(allUsers, myProfile) {
   const all = myProfile?.id ? [myProfile, ...allUsers] : allUsers;
-  return all.map(p=>({id:p.id, totalWins:tw(p.wins)}))
-    .sort((a,b)=>b.totalWins-a.totalWins)
+  return all.map(p=>({id:p.id, points:p.points||0}))
+    .sort((a,b)=>b.points-a.points)
     .map((x,i)=>({...x,rank:i+1}));
 }
 
@@ -129,6 +135,9 @@ function profileFromRow(row) {
     mapVisible: row.map_visible??true,
     bannerUrl: row.banner_url||"",
     hasAccess: row.has_access??false,
+    points: row.points??0,
+    wins:  row.wins  || {h2h:0, group:0, trial:0, drag:0},
+    races: row.races || {h2h:0, group:0, trial:0, drag:0},
     times: {
       zero_sixty:    row.zero_sixty    ? String(row.zero_sixty)    : "",
       zero_120:      row.zero_120      ? String(row.zero_120)      : "",
@@ -144,6 +153,9 @@ function carFromRow(row) {
     year: row.year?.toString()||"", trim: row.trim||"",
     mods: row.mods||"", photoUrl: row.photos?.[0]||"",
     buildStage: row.build_stage||"stock", isPrimary: row.is_primary||false,
+    times: row.times||{},
+    wins:  row.wins ||{h2h:0,group:0,trial:0,drag:0},
+    races: row.races||{h2h:0,group:0,trial:0,drag:0},
   };
 }
 
@@ -580,8 +592,8 @@ function NavIcon({ name, size = 20 }) {
 }
 
 /* ─── TIER BADGE ─────────────────────────────────────────── */
-function TierBadge({ wins }) {
-  const t = getTier(wins);
+function TierBadge({ points = 0 }) {
+  const t = getTier(points);
   return (
     <span className="tier-badge" style={{color:t.color,borderColor:t.color+"44"}}>
       {t.icon} {t.name}
@@ -608,6 +620,23 @@ function CreateLobbyModal({ myProfile, groups, onClose, onCreate }) {
     groupId: "", destination: "", micActive: false,
   });
   const [saving, setSaving] = useState(false);
+  const [destSuggestions, setDestSuggestions] = useState([]);
+  const destDebounce = useRef(null);
+
+  const handleDestInput = (val) => {
+    setForm(f=>({...f,destination:val}));
+    setDestSuggestions([]);
+    if (destDebounce.current) clearTimeout(destDebounce.current);
+    if (!val.trim()||val.length<2) return;
+    destDebounce.current = setTimeout(async()=>{
+      try {
+        const proximity = myProfile.lat&&myProfile.lng ? `&proximity=${myProfile.lng},${myProfile.lat}` : "";
+        const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(val)}.json?access_token=${MAPBOX_TOKEN}&autocomplete=true&limit=5${proximity}`);
+        const data = await res.json();
+        setDestSuggestions((data.features||[]).map(f=>({name:f.place_name,short:f.text})));
+      } catch(_){}
+    }, 350);
+  };
 
   const handleGroupChange = (gid) => {
     const g = myGroups.find(x=>x.id===gid);
@@ -663,9 +692,20 @@ function CreateLobbyModal({ myProfile, groups, onClose, onCreate }) {
           </div>
         </div>
 
-        <div style={{marginBottom:16}}>
+        <div style={{marginBottom:16,position:"relative"}}>
           <label className="inp-label">Planned Destination <span style={{fontWeight:400,color:"var(--muted2)",textTransform:"none",letterSpacing:0,fontSize:10}}>(optional)</span></label>
-          <input className="inp" value={form.destination} onChange={e=>setForm({...form,destination:e.target.value})} placeholder="e.g. Vista House, Crown Point"/>
+          <input className="inp" value={form.destination} onChange={e=>handleDestInput(e.target.value)} placeholder="Search a place…" autoComplete="off"/>
+          {destSuggestions.length>0&&(
+            <div style={{position:"absolute",left:0,right:0,background:"var(--s2)",border:"1px solid var(--border)",borderRadius:10,marginTop:4,zIndex:999,overflow:"hidden"}}>
+              {destSuggestions.map((s,i)=>(
+                <div key={i} onClick={()=>{setForm(f=>({...f,destination:s.name}));setDestSuggestions([]);}}
+                  style={{padding:"10px 14px",cursor:"pointer",borderBottom:i<destSuggestions.length-1?"1px solid var(--border)":undefined}}>
+                  <div style={{fontSize:13,fontWeight:600,color:"var(--text)"}}>{s.short}</div>
+                  <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>{s.name}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <button className="btn btn-primary btn-full" style={{borderRadius:12,padding:14,marginBottom:8}}
@@ -817,7 +857,7 @@ function PaywallScreen({ session, onAccessGranted, onLogout }) {
       <div className="app" style={{alignItems:"center",justifyContent:"center",padding:"0 20px",textAlign:"center"}}>
         <div style={{maxWidth:360,width:"100%"}}>
           <div style={{marginBottom:28}}>
-            <img src={logoImg} alt="0xRace" style={{height:48,width:"auto",marginBottom:16}}/>
+            <img src={logoImg} alt="0xRace" style={{height:48,width:"auto",marginBottom:16,mixBlendMode:"screen"}}/>
             <div style={{fontSize:24,fontWeight:700,color:"var(--text)",fontFamily:"var(--font-display)",letterSpacing:1,marginBottom:8}}>
               Unlock 0xRace
             </div>
@@ -899,6 +939,11 @@ export default function App() {
   }, []);
 
   const loadData = async (userId) => {
+    // Reset user-specific state before loading new user's data
+    setMyProfile({...BLANK_PROFILE});
+    setMyCars([]);
+    setMyCar({...BLANK_CAR});
+    setFriends([]);
     try {
       const [profileRes, usersRes, groupsRes, myCarRes, allCarsRes, friendsRes] = await Promise.all([
         supabase.from("profiles").select("*").eq("id", userId).single(),
@@ -972,7 +1017,7 @@ export default function App() {
     }
   };
 
-  const handleLogout = async () => { await supabase.auth.signOut(); };
+  const handleLogout = async () => { await supabase.auth.signOut({ scope: "local" }); };
 
   const handleCreateGroupDB = async (form) => {
     const myId = session?.user?.id;
@@ -992,6 +1037,39 @@ export default function App() {
       theme: form.theme||"#e61a1a", bannerUrl:"",
       lastActive:"just now", messages:[], pendingRequests:[],
     }]);
+    awardPoints(myId, 5); // creating a group = 5pts
+  };
+
+  const awardPoints = async (userId, pts) => {
+    const newPts = (myProfile.points||0) + pts;
+    setMyProfile(p=>({...p, points: newPts}));
+    await supabase.from("profiles").update({points: newPts}).eq("id", userId);
+  };
+
+  const handleLogWin = async (format, result, carId) => {
+    const myId = session?.user?.id;
+    if (!myId) return;
+    const isWin = result === "win";
+    // Update profile-level totals
+    const newWins = {...(myProfile.wins||{h2h:0,group:0,trial:0,drag:0})};
+    const newRaces = {...(myProfile.races||{h2h:0,group:0,trial:0,drag:0})};
+    if (isWin) newWins[format] = (newWins[format]||0) + 1;
+    newRaces[format] = (newRaces[format]||0) + 1;
+    setMyProfile(p=>({...p, wins:newWins, races:newRaces}));
+    await supabase.from("profiles").update({wins:newWins, races:newRaces}).eq("id", myId);
+    // Update per-car stats
+    if (carId) {
+      const car = myCars.find(c=>c.id===carId);
+      if (car) {
+        const cWins = {...(car.wins||{h2h:0,group:0,trial:0,drag:0})};
+        const cRaces = {...(car.races||{h2h:0,group:0,trial:0,drag:0})};
+        if (isWin) cWins[format] = (cWins[format]||0) + 1;
+        cRaces[format] = (cRaces[format]||0) + 1;
+        setMyCars(cs=>cs.map(c=>c.id===carId?{...c,wins:cWins,races:cRaces}:c));
+        await supabase.from("user_cars").update({wins:cWins, races:cRaces}).eq("id", carId);
+      }
+    }
+    if (isWin) awardPoints(myId, 5); // win = 5pts
   };
 
   const handleCreateLobby = async (form) => {
@@ -1029,16 +1107,7 @@ export default function App() {
     return <AuthPage initialMode={authMode}/>;
   }
 
-  // Paywall — show unless user has been granted access
-  if (!myProfile.hasAccess && myProfile.id) {
-    return (
-      <PaywallScreen
-        session={session}
-        onAccessGranted={() => loadData(session.user.id)}
-        onLogout={handleLogout}
-      />
-    );
-  }
+  // Paywall disabled — all registered users get full access
 
   const myId = session.user.id;
   const isFriend = id => friends.includes(id);
@@ -1057,13 +1126,20 @@ export default function App() {
     const{error}=await supabase.from("group_members").upsert({group_id:gid,user_id:myId,role:"member",status:"active"},{onConflict:"group_id,user_id"});
     if(error) console.error("joinGroup error:",error);
   };
-  const reqGroup = gid => { if (!sentGR(gid)) setGroupReqs(r=>[...r,gid]); };
+  const reqGroup = async (gid) => {
+    if (sentGR(gid)) return;
+    setGroupReqs(r=>[...r,gid]);
+    setGroups(gs=>gs.map(g=>g.id===gid?{...g,pendingRequests:[...(g.pendingRequests||[]),myId]}:g));
+    const{error}=await supabase.from("group_members").upsert({group_id:gid,user_id:myId,role:"member",status:"pending"},{onConflict:"group_id,user_id"});
+    if(error) console.error("reqGroup error:",error);
+  };
   const isInLobby = lid => lobbies.find(l=>l.id===lid)?.memberIds.includes(myId);
   const sentLR = lid => lobbyReqs.includes(lid);
   const joinLobby = async (lid) => {
     setLobbies(ls=>ls.map(l=>l.id===lid?{...l,memberIds:[...l.memberIds,myId]}:l));
     const{error}=await supabase.from("lobby_members").upsert({lobby_id:lid,user_id:myId,status:"active"},{onConflict:"lobby_id,user_id"});
     if(error) console.error("joinLobby error:",error);
+    awardPoints(myId, 3); // joining a lobby = 3pts
   };
   const reqLobby = async (lid) => {
     if (sentLR(lid)) return;
@@ -1081,6 +1157,11 @@ export default function App() {
     setLobbies(ls=>ls.map(l=>l.id===lid?{...l,pendingRequests:l.pendingRequests.filter(r=>r!==uid)}:l));
     const{error}=await supabase.from("lobby_members").delete().eq("lobby_id",lid).eq("user_id",uid);
     if(error) console.error("denyLobby error:",error);
+  };
+  const kickLobby = async (lid, uid) => {
+    setLobbies(ls=>ls.map(l=>l.id===lid?{...l,memberIds:l.memberIds.filter(id=>id!==uid)}:l));
+    const{error}=await supabase.from("lobby_members").delete().eq("lobby_id",lid).eq("user_id",uid);
+    if(error) console.error("kickLobby error:",error);
   };
 
   const pendingCount = groups.reduce((a,g)=>a+(g.pendingRequests?.length||0),0)
@@ -1106,7 +1187,7 @@ export default function App() {
               <Av user={myProfile} size={32} isMe/>
               <div className="sidebar-profile-info">
                 <div className="sidebar-profile-name">@{myProfile.username}</div>
-                <TierBadge wins={tw(myProfile.wins)} />
+                <TierBadge points={myProfile.points||0} />
               </div>
             </div>
           </div>
@@ -1143,14 +1224,15 @@ export default function App() {
             ) : lobbyDetailId ? (
               <LobbyDetail lobbyId={lobbyDetailId} lobbies={lobbies} setLobbies={setLobbies}
                 onBack={()=>setLobbyDetailId(null)} openPlayer={setPlayerView}
-                myProfile={myProfile} allUsers={allUsers} myCar={myCar}
-                isInLobby={isInLobby} sentLR={sentLR} joinLobby={joinLobby}
-                reqLobby={reqLobby} approveLobby={approveLobby} denyLobby={denyLobby}/>
+                myProfile={myProfile} allUsers={allUsers} myCar={myCar} myCars={myCars}
+                groups={groups} isInLobby={isInLobby} sentLR={sentLR} joinLobby={joinLobby}
+                reqLobby={reqLobby} approveLobby={approveLobby} denyLobby={denyLobby} kickLobby={kickLobby}/>
             ) : groupDetailId ? (
               <GroupDetail groupId={groupDetailId} groups={groups} setGroups={setGroups}
                 onBack={()=>setGroupDetailId(null)} openPlayer={setPlayerView}
                 openChat={setChatGroupId} myProfile={myProfile} allUsers={allUsers}
-                isInGroup={isInGroup} onCreateLobby={(gid)=>{setGroupDetailId(null);setCreateLobbyOpen(true);}}
+                isInGroup={isInGroup} sentGR={sentGR} joinGroup={joinGroup} reqGroup={reqGroup}
+                onCreateLobby={(gid)=>{setGroupDetailId(null);setCreateLobbyOpen(true);}}
                 lobbies={lobbies} onCreateLobbyForGroup={(g)=>{
                   setGroupDetailId(null);
                   setCreateLobbyOpen(true);
@@ -1182,7 +1264,7 @@ export default function App() {
               <ProfileView myProfile={myProfile} friends={friends} groups={groups}
                 openPlayer={setPlayerView} onEdit={()=>setEditingProfile(true)}
                 onCreateGroup={()=>setCreateGroupOpen(true)}
-                myCar={myCar} allUsers={allUsers}/>
+                myCar={myCar} myCars={myCars} allUsers={allUsers} onLogWin={handleLogWin}/>
             )}
             {createGroupOpen && <CreateGroupModal myProfile={myProfile} existingGroups={groups} onClose={()=>setCreateGroupOpen(false)} onCreateDB={handleCreateGroupDB}/>}
             {createLobbyOpen && <CreateLobbyModal myProfile={myProfile} groups={groups} onClose={()=>setCreateLobbyOpen(false)} onCreate={handleCreateLobby}/>}
@@ -1220,7 +1302,7 @@ function Header({ myProfile, onLogout }) {
           <div className="me-username">@{myProfile.username}</div>
           <div className="me-car">{myProfile.year} {myProfile.car}</div>
         </div>
-        <TierBadge wins={tw(myProfile.wins)} />
+        <TierBadge points={myProfile.points||0} />
       </div>
     </div>
   );
@@ -1339,6 +1421,8 @@ function LobbiesView({ lobbies, setLobbies, myProfile, allUsers, groups, isInLob
         const area = fmtArea(l.lat, l.lng);
         const group = l.groupId ? groups.find(g=>g.id===l.groupId) : null;
         const micCount = l.micUsers?.length || 0;
+        // Block non-members from joining private group lobbies
+        const groupLocked = group&&group.type==="private"&&!group.memberIds.includes(myProfile.id);
 
         return (
           <div key={l.id} className="card click" onClick={()=>openLobby(l.id)}>
@@ -1385,7 +1469,8 @@ function LobbiesView({ lobbies, setLobbies, myProfile, allUsers, groups, isInLob
 
             <div className="gc-actions">
               {inLobby && <button className="btn btn-green btn-sm" style={{cursor:"default"}}>✓ In Lobby</button>}
-              {!inLobby && !pending && (
+              {!inLobby && groupLocked && <span style={{fontSize:11,color:"var(--muted2)"}}>🔒 Members only</span>}
+              {!inLobby && !pending && !groupLocked && (
                 <button className="btn btn-primary btn-sm" onClick={e=>{e.stopPropagation(); l.isOpen?joinLobby(l.id):reqLobby(l.id);}}>
                   {l.isOpen?"Join Lobby":"Request to Join"}
                 </button>
@@ -1401,16 +1486,29 @@ function LobbiesView({ lobbies, setLobbies, myProfile, allUsers, groups, isInLob
 }
 
 /* ─── LOBBY DETAIL ───────────────────────────────────────── */
-function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfile, allUsers, myCar, isInLobby, sentLR, joinLobby, reqLobby, approveLobby, denyLobby }) {
+function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfile, allUsers, myCar, myCars, groups, isInLobby, sentLR, joinLobby, reqLobby, approveLobby, denyLobby, kickLobby }) {
   const l = lobbies.find(x=>x.id===lobbyId);
   const [memberCars, setMemberCars] = useState({});
   const [memberSpeeds, setMemberSpeeds] = useState({});
+  const [memberLocations, setMemberLocations] = useState({});
   const [mySpeed, setMySpeed] = useState(null);
   const [followMe, setFollowMe] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [micOn, setMicOn] = useState(false);
+  const [micError, setMicError] = useState("");
+  const [gpsError, setGpsError] = useState("");
+  const agoraClientRef = useRef(null);
+  const agoraTrackRef = useRef(null);
+  const chatEndRef = useRef(null);
+  const knownMsgIds = useRef(new Set());
   const watchIdRef = useRef(null);
   const speedChannelRef = useRef(null);
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
+  const memberMarkersRef = useRef({});
+  const lastPosRef = useRef(null); // for calculating speed from position delta
 
   useEffect(()=>{
     if (!l?.memberIds?.length) return;
@@ -1439,41 +1537,244 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
     return ()=>{ if(mapRef.current){mapRef.current.remove();mapRef.current=null;} };
   }, [inLobby, lobbyId]);
 
-  // Live GPS + speed broadcast while in lobby
+  // Update member markers on map when locations change
+  useEffect(()=>{
+    if (!mapRef.current||!inLobby) return;
+    Object.entries(memberLocations).forEach(([uid,loc])=>{
+      if (!loc?.lat||!loc?.lng) return;
+      const user = members.find(m=>m.id===uid)||( uid===myProfile.id?myProfile:null);
+      if (memberMarkersRef.current[uid]) {
+        memberMarkersRef.current[uid].setLngLat([loc.lng,loc.lat]);
+      } else {
+        const el = document.createElement("div");
+        el.style.cssText = `width:28px;height:28px;border-radius:50%;border:2px solid ${uid===myProfile.id?"#e61a1a":"#fff"};overflow:hidden;background:#1a1a1a;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${uid===myProfile.id?"#e61a1a":"#fff"};`;
+        el.textContent = user?.avatar||"?";
+        const marker = new mapboxgl.Marker({element:el}).setLngLat([loc.lng,loc.lat]).addTo(mapRef.current);
+        memberMarkersRef.current[uid] = marker;
+      }
+    });
+    // Remove markers for users no longer in lobby
+    Object.keys(memberMarkersRef.current).forEach(uid=>{
+      if (!memberLocations[uid]) { memberMarkersRef.current[uid].remove(); delete memberMarkersRef.current[uid]; }
+    });
+  }, [memberLocations, inLobby]);
+
+  // Live GPS + speed + location broadcast while in lobby
   useEffect(()=>{
     if (!inLobby||!myProfile?.id) return;
+    setGpsError("");
     const channelName = `lobby-speed-${lobbyId}`;
     const ch = supabase.channel(channelName,{config:{broadcast:{self:false}}});
     speedChannelRef.current = ch;
     ch.on("broadcast",{event:"speed"},(payload)=>{
-      if (payload.payload?.userId && payload.payload.userId!==myProfile.id) {
-        setMemberSpeeds(prev=>({...prev,[payload.payload.userId]:payload.payload.mph}));
+      const p = payload.payload;
+      if (p?.userId && p.userId!==myProfile.id) {
+        setMemberSpeeds(prev=>({...prev,[p.userId]:p.mph}));
+        if (p.lat!=null && p.lng!=null) {
+          setMemberLocations(prev=>({...prev,[p.userId]:{lat:p.lat,lng:p.lng}}));
+        }
       }
-    }).subscribe();
+    }).subscribe((status)=>{
+      if (status==="CHANNEL_ERROR") setGpsError("Live connection error. Reload to reconnect.");
+    });
+
+    if (!navigator.geolocation) {
+      setGpsError("GPS not available on this device.");
+      return;
+    }
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos)=>{
-        const rawMph = pos.coords.speed!=null ? Math.round(pos.coords.speed*2.237) : 0;
-        const mph = Math.max(0, rawMph);
+        setGpsError("");
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const ts = pos.timestamp;
+        // Use coords.speed if available, otherwise compute from consecutive positions
+        let mph = 0;
+        if (pos.coords.speed!=null && pos.coords.speed>=0) {
+          mph = Math.round(pos.coords.speed*2.237);
+        } else if (lastPosRef.current) {
+          const prev = lastPosRef.current;
+          const dt = (ts - prev.ts) / 1000; // seconds
+          if (dt > 0) {
+            const dist = haversine(prev.lat, prev.lng, lat, lng); // miles
+            mph = Math.round((dist / dt) * 3600);
+          }
+        }
+        mph = Math.max(0, Math.min(mph, 200)); // sanity cap
+        lastPosRef.current = {lat, lng, ts};
         setMySpeed(mph);
         setMemberSpeeds(prev=>({...prev,[myProfile.id]:mph}));
-        ch.send({type:"broadcast",event:"speed",payload:{userId:myProfile.id,mph}});
+        setMemberLocations(prev=>({...prev,[myProfile.id]:{lat,lng}}));
+        ch.send({type:"broadcast",event:"speed",payload:{userId:myProfile.id,mph,lat,lng}});
       },
-      ()=>{},
-      {enableHighAccuracy:true,maximumAge:1000,timeout:10000}
+      (err)=>{
+        if (err.code===1) setGpsError("GPS permission denied. Allow location access to broadcast your speed.");
+        else if (err.code===2) setGpsError("GPS signal unavailable. Move to an open area.");
+        else setGpsError("GPS timed out. Retrying…");
+      },
+      {enableHighAccuracy:true,maximumAge:2000,timeout:15000}
     );
 
     return ()=>{
       if (watchIdRef.current!=null) navigator.geolocation.clearWatch(watchIdRef.current);
       supabase.removeChannel(ch);
       speedChannelRef.current = null;
+      lastPosRef.current = null;
     };
   }, [inLobby, lobbyId, myProfile?.id]);
+
+  // Load lobby chat + realtime
+  useEffect(()=>{
+    if (!lobbyId) return;
+    setChatLoading(true); knownMsgIds.current=new Set(); setChatMessages([]);
+    supabase.from("lobby_messages").select("*, profiles(username,avatar_initials,avatar_url)")
+      .eq("lobby_id",lobbyId).order("created_at",{ascending:true}).limit(100)
+      .then(({data})=>{
+        if(data){
+          data.forEach(m=>knownMsgIds.current.add(m.id));
+          setChatMessages(data.map(m=>({id:m.id,uid:m.user_id,username:m.profiles?.username||"?",avatar:m.profiles?.avatar_initials||"?",avatarUrl:m.profiles?.avatar_url||"",text:m.content,ts:m.created_at})));
+        }
+        setChatLoading(false);
+      });
+    const ch = supabase.channel(`lobby-chat-${lobbyId}`)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"lobby_messages",filter:`lobby_id=eq.${lobbyId}`},async(payload)=>{
+        const row=payload.new;
+        if(knownMsgIds.current.has(row.id)) return;
+        knownMsgIds.current.add(row.id);
+        const known=allUsers.find(u=>u.id===row.user_id)||( row.user_id===myProfile.id?myProfile:null);
+        const username=known?.username||"?", avatar=known?.avatar||"?", avatarUrl=known?.avatarUrl||"";
+        setChatMessages(prev=>[...prev,{id:row.id,uid:row.user_id,username,avatar,avatarUrl,text:row.content,ts:row.created_at}]);
+      }).subscribe();
+    return ()=>supabase.removeChannel(ch);
+  }, [lobbyId]);
+
+  // Realtime lobby_members — host sees requests, requester sees approval
+  useEffect(()=>{
+    if (!lobbyId) return;
+    // Initial refresh to catch any state changes that happened while we were away
+    supabase.from("lobby_members").select("user_id,status,mic_active").eq("lobby_id",lobbyId).then(({data})=>{
+      if(!data) return;
+      setLobbies(ls=>ls.map(lo=>lo.id===lobbyId?{
+        ...lo,
+        memberIds:data.filter(m=>m.status==="active").map(m=>m.user_id),
+        pendingRequests:data.filter(m=>m.status==="pending").map(m=>m.user_id),
+        micUsers:data.filter(m=>m.mic_active).map(m=>m.user_id),
+      }:lo));
+    });
+    const ch = supabase.channel(`lobby-members-${lobbyId}`)
+      .on("postgres_changes",{event:"*",schema:"public",table:"lobby_members",filter:`lobby_id=eq.${lobbyId}`},async()=>{
+        const{data}=await supabase.from("lobby_members").select("user_id,status,mic_active").eq("lobby_id",lobbyId);
+        if(!data) return;
+        setLobbies(ls=>ls.map(lo=>lo.id===lobbyId?{
+          ...lo,
+          memberIds:data.filter(m=>m.status==="active").map(m=>m.user_id),
+          pendingRequests:data.filter(m=>m.status==="pending").map(m=>m.user_id),
+          micUsers:data.filter(m=>m.mic_active).map(m=>m.user_id),
+        }:lo));
+      }).subscribe();
+    return ()=>supabase.removeChannel(ch);
+  }, [lobbyId]);
+
+  useEffect(()=>{chatEndRef.current?.scrollIntoView({behavior:"smooth"});},[chatMessages.length]);
+
+  const sendChat = async () => {
+    const text=chatInput.trim(); if(!text) return;
+    setChatInput("");
+    await supabase.from("lobby_messages").insert({lobby_id:lobbyId,user_id:myProfile.id,content:text});
+    // Award 1pt for sending a chat message (rate-limited by UX, not enforced server-side)
+    const newPts = (myProfile.points||0) + 1;
+    supabase.from("profiles").update({points:newPts}).eq("id",myProfile.id);
+  };
+
+  // Keep audio context alive when app goes to background (mobile workaround)
+  // Plays a silent loop so iOS/Android don't suspend the audio context
+  const silentAudioRef = useRef(null);
+  useEffect(()=>{
+    if (!micOn) return;
+    try {
+      const ctx = new (window.AudioContext||window.webkitAudioContext)();
+      const buf = ctx.createBuffer(1,1,22050);
+      const src = ctx.createBufferSource();
+      src.buffer = buf; src.loop = true;
+      src.connect(ctx.destination); src.start(0);
+      silentAudioRef.current = { ctx, src };
+      const resume = () => ctx.state==="suspended" && ctx.resume();
+      document.addEventListener("visibilitychange", resume);
+      return ()=>{
+        document.removeEventListener("visibilitychange", resume);
+        src.stop(); ctx.close();
+        silentAudioRef.current = null;
+      };
+    } catch(_){}
+  }, [micOn]);
+
+  // Clean up Agora on unmount
+  useEffect(()=>{
+    return ()=>{
+      if (agoraTrackRef.current) { agoraTrackRef.current.close(); agoraTrackRef.current=null; }
+      if (agoraClientRef.current) { agoraClientRef.current.leave().catch(()=>{}); agoraClientRef.current=null; }
+    };
+  }, [lobbyId]);
+
+  const toggleMic = async () => {
+    setMicError("");
+    if (!micOn) {
+      // Turn mic ON — join Agora channel
+      try {
+        const client = AgoraRTC.createClient({ mode:"rtc", codec:"vp8" });
+        agoraClientRef.current = client;
+
+        // Subscribe to other users' audio when they publish
+        client.on("user-published", async(user, mediaType)=>{
+          await client.subscribe(user, mediaType);
+          if (mediaType==="audio") user.audioTrack?.play();
+        });
+        client.on("user-unpublished", async(user)=>{
+          await client.unsubscribe(user);
+        });
+
+        // Use a numeric UID derived from the user's UUID
+        const uid = Math.abs(myProfile.id.split("-").join("").slice(0,8).split("").reduce((a,c)=>((a<<5)-a)+c.charCodeAt(0),0)) % 100000;
+        await client.join(AGORA_APP_ID, lobbyId, null, uid);
+
+        const track = await AgoraRTC.createMicrophoneAudioTrack();
+        agoraTrackRef.current = track;
+        await client.publish(track);
+
+        setMicOn(true);
+        await supabase.from("lobby_members").update({mic_active:true}).eq("lobby_id",lobbyId).eq("user_id",myProfile.id);
+        setLobbies(ls=>ls.map(lo=>lo.id===lobbyId?{...lo,micUsers:[...new Set([...lo.micUsers,myProfile.id])]}:lo));
+      } catch(err) {
+        console.error("Agora mic error:", err);
+        const msg = err?.message||"";
+        if (msg.includes("Permission")||msg.includes("NotAllowed")||err?.name==="NotAllowedError") {
+          setMicError("Microphone permission denied. Tap the lock icon in your browser address bar and allow microphone access, then try again.");
+        } else if (!AGORA_APP_ID) {
+          setMicError("Voice chat is not configured. Contact support.");
+        } else if (msg.includes("INVALID_VENDOR_KEY")||msg.includes("vendor")) {
+          setMicError("Voice chat App ID is invalid. Contact support.");
+        } else {
+          setMicError(`Could not start microphone: ${msg||"unknown error"}. Check your browser settings and try again.`);
+        }
+        if (agoraClientRef.current) { agoraClientRef.current.leave().catch(()=>{}); agoraClientRef.current=null; }
+      }
+    } else {
+      // Turn mic OFF
+      if (agoraTrackRef.current) { agoraTrackRef.current.close(); agoraTrackRef.current=null; }
+      if (agoraClientRef.current) { await agoraClientRef.current.leave().catch(()=>{}); agoraClientRef.current=null; }
+      setMicOn(false);
+      await supabase.from("lobby_members").update({mic_active:false}).eq("lobby_id",lobbyId).eq("user_id",myProfile.id);
+      setLobbies(ls=>ls.map(lo=>lo.id===lobbyId?{...lo,micUsers:lo.micUsers.filter(id=>id!==myProfile.id)}:lo));
+    }
+  };
 
   if (!l) return null;
   const members = l.memberIds.map(id=>getU(id,allUsers,myProfile)).filter(Boolean);
   const pending = l.pendingRequests?.map(id=>getU(id,allUsers,myProfile)).filter(Boolean)||[];
   const isMyLobby = l.createdBy===myProfile.id;
+  const lobbyGroup = l.groupId ? (groups||[]).find(g=>g.id===l.groupId) : null;
+  const groupLocked = lobbyGroup&&lobbyGroup.type==="private"&&!lobbyGroup.memberIds.includes(myProfile.id);
 
   return (
     <div className="fade">
@@ -1492,7 +1793,9 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
       {/* Join controls */}
       {!inLobby && (
         <div style={{padding:"0 16px 14px"}}>
-          {!sentLR(lobbyId) ? (
+          {groupLocked ? (
+            <div style={{textAlign:"center",fontSize:12,color:"var(--muted)",padding:"10px 0"}}>🔒 This lobby is for {lobbyGroup.name} members only</div>
+          ) : !sentLR(lobbyId) ? (
             <button className="btn btn-primary btn-full" style={{borderRadius:10}} onClick={()=>l.isOpen?joinLobby(lobbyId):reqLobby(lobbyId)}>
               {l.isOpen?"Join Lobby":"Request to Join"}
             </button>
@@ -1505,6 +1808,27 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
       {/* MPH + Follow Me (only for members) */}
       {inLobby && (
         <>
+          {/* Car selector */}
+          {myCars&&myCars.length>1&&(
+            <div style={{padding:"0 16px 8px"}}>
+              <label className="inp-label">Your Car</label>
+              <select className="inp" style={{appearance:"none",cursor:"pointer"}} defaultValue={myCar?.id||""}
+                onChange={e=>{
+                  const car = myCars.find(c=>c.id===e.target.value);
+                  if (car) {
+                    supabase.from("user_cars").update({is_primary:false}).eq("user_id",myProfile.id);
+                    supabase.from("user_cars").update({is_primary:true}).eq("id",car.id);
+                  }
+                }}>
+                {myCars.map(c=>(
+                  <option key={c.id} value={c.id}>{[c.year,c.make,c.model].filter(Boolean).join(" ")}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {gpsError&&<div style={{margin:"0 16px 8px",padding:"10px 14px",background:"rgba(255,59,48,.1)",border:"1px solid rgba(255,59,48,.25)",borderRadius:8,fontSize:12,color:"var(--red)"}}>{gpsError}</div>}
+
           <div className="mph-bar">
             <div className="mph-label">Your Speed</div>
             <div className="mph-row">
@@ -1535,7 +1859,9 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
                     {memberCars[m.id]&&<div style={{fontSize:10,color:"var(--muted)",fontFamily:"var(--font-mono)"}}>{memberCars[m.id].str}</div>}
                   </div>
                 </div>
-                <span className="mph-member-speed">{memberSpeeds[m.id]!=null?`${memberSpeeds[m.id]} mph`:"—"}</span>
+                <span className="mph-member-speed" style={{color:memberSpeeds[m.id]!=null?"var(--text)":"var(--muted2)",fontSize:memberSpeeds[m.id]!=null?undefined:11}}>
+                  {memberSpeeds[m.id]!=null?`${memberSpeeds[m.id]} mph`:"No GPS"}
+                </span>
               </div>
             ))}
           </div>
@@ -1547,7 +1873,7 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
         </>
       )}
 
-      {/* Pending requests (for lobby creator) */}
+      {/* Pending requests (host only) */}
       {isMyLobby && pending.length>0 && (
         <>
           <div className="sec-lbl">Join Requests ({pending.length})</div>
@@ -1569,43 +1895,85 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
 
       {/* Members */}
       <div className="sec-lbl">Users ({members.length})</div>
-      <div className="list-card" style={{margin:"0 16px 14px"}}>
+      <div className="list-card" style={{margin:"0 16px 8px"}}>
         {members.map(m=>{
           const car = memberCars[m.id];
           const isMicOn = l.micUsers?.includes(m.id);
           const isMe = m.id===myProfile.id;
           return (
-            <div key={m.id} className="list-item" onClick={()=>!isMe&&openPlayer(m.id)}>
-              <Av user={m} size={32} isMe={isMe}/>
-              <div className="list-item-info">
+            <div key={m.id} className="list-item">
+              <div style={{cursor:isMe?undefined:"pointer"}} onClick={()=>!isMe&&openPlayer(m.id)}>
+                <Av user={m} size={32} isMe={isMe}/>
+              </div>
+              <div className="list-item-info" style={{cursor:isMe?undefined:"pointer"}} onClick={()=>!isMe&&openPlayer(m.id)}>
                 <div className="list-item-title">
                   @{m.username}
                   {isMe&&<span style={{fontSize:10,color:"var(--accent)",marginLeft:6}}>YOU</span>}
                   {m.id===l.createdBy&&<span style={{fontSize:9,color:"var(--muted2)",marginLeft:4,background:"var(--s3)",padding:"1px 5px",borderRadius:3,border:"1px solid var(--border)"}}>HOST</span>}
                 </div>
                 {car&&<div className="list-item-sub" style={{fontFamily:"var(--font-mono)",fontSize:10,display:"flex",alignItems:"center",gap:5}}>
-                  {car.str}
-                  {car.buildStage&&car.buildStage!=="stock"&&<BuildBadge stage={car.buildStage}/>}
+                  {car.str}{car.buildStage&&car.buildStage!=="stock"&&<BuildBadge stage={car.buildStage}/>}
                 </div>}
-                {/* Show precise location only if in same lobby */}
-                {inLobby && m.lat && (
-                  <div style={{fontSize:10,color:"var(--green)",marginTop:2,fontFamily:"var(--font-mono)"}}>
-                    📍 {m.lat.toFixed(4)}, {m.lng.toFixed(4)}
-                    {memberSpeeds[m.id]!=null&&<span style={{marginLeft:8,color:"var(--accent)"}}>{memberSpeeds[m.id]} mph</span>}
-                  </div>
-                )}
+                {inLobby&&memberSpeeds[m.id]!=null&&<div style={{fontSize:10,color:"var(--accent)",marginTop:2}}>{memberSpeeds[m.id]} mph</div>}
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
                 {isMicOn
-                  ? <span className="mic-on" title="On mic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg></span>
-                  : <span className="mic-off"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/></svg></span>
-                }
-                <TierBadge wins={tw(m.wins)}/>
+                  ? <span className="mic-on" title="Mic on"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg></span>
+                  : null}
+                {isMyLobby&&!isMe&&<button className="btn btn-secondary btn-sm" style={{fontSize:10,padding:"2px 8px"}} onClick={()=>kickLobby(lobbyId,m.id)}>Kick</button>}
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* Mic toggle (members only) */}
+      {inLobby&&(
+        <div style={{padding:"0 16px 10px"}}>
+          <button
+            className={`btn btn-full ${micOn?"btn-primary":"btn-secondary"}`}
+            style={{borderRadius:10,padding:"11px 14px",display:"flex",alignItems:"center",gap:8,justifyContent:"center"}}
+            onClick={toggleMic}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              {micOn
+                ? <><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></>
+                : <><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/></>
+              }
+            </svg>
+            {micOn ? "Mic On — Tap to Mute" : "Tap to Unmute Mic"}
+          </button>
+          {micError&&<div style={{fontSize:11,color:"var(--red)",marginTop:6,lineHeight:1.4}}>{micError}</div>}
+        </div>
+      )}
+
+      {/* Lobby Chat */}
+      {inLobby&&(
+        <>
+          <div className="sec-lbl">Lobby Chat</div>
+          <div style={{margin:"0 16px 6px",background:"var(--s2)",borderRadius:12,border:"1px solid var(--border)",maxHeight:260,overflowY:"auto",padding:"10px 12px",display:"flex",flexDirection:"column",gap:8}}>
+            {chatLoading&&<div style={{fontSize:12,color:"var(--muted)",textAlign:"center"}}>Loading…</div>}
+            {!chatLoading&&chatMessages.length===0&&<div style={{fontSize:12,color:"var(--muted)",textAlign:"center"}}>No messages yet. Say something!</div>}
+            {chatMessages.map(msg=>(
+              <div key={msg.id} style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+                <Av user={{avatar:msg.avatar,avatarUrl:msg.avatarUrl}} size={24} isMe={msg.uid===myProfile.id}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <span style={{fontSize:11,fontWeight:600,color:msg.uid===myProfile.id?"var(--accent)":"var(--text)"}}>{msg.username} </span>
+                  <span style={{fontSize:12,color:"var(--text2)",wordBreak:"break-word"}}>{msg.text}</span>
+                </div>
+              </div>
+            ))}
+            <div ref={chatEndRef}/>
+          </div>
+          <div style={{margin:"0 16px 14px",display:"flex",gap:6}}>
+            <input className="inp" placeholder="Say something…" value={chatInput}
+              onChange={e=>setChatInput(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&sendChat()}
+              style={{flex:1,padding:"10px 12px"}}/>
+            <button className="btn btn-primary btn-sm" onClick={sendChat} disabled={!chatInput.trim()}>Send</button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1686,7 +2054,7 @@ function GroupsView({ groups, setGroups, isInGroup, sentGR, joinGroup, reqGroup,
             {!isInGroup(g.id)&&!sentGR(g.id)&&(
               <button className="btn btn-primary btn-sm" onClick={()=>{
                 if (g.type==="open") joinGroup(g.id);
-                else { setGroups(gs=>gs.map(x=>x.id===g.id?{...x,pendingRequests:[...(x.pendingRequests||[]),myProfile.id]}:x)); reqGroup(g.id); }
+                else { reqGroup(g.id); }
               }}>{g.type==="open"?"Join Group":"Request to Join"}</button>
             )}
             {!isInGroup(g.id)&&sentGR(g.id)&&<button className="btn btn-secondary btn-sm" disabled>Pending…</button>}
@@ -1756,7 +2124,7 @@ function SearchView({ isFriend, sentFR, addFR, openPlayer, groups, isInGroup, se
                   {p.car&&<div className="user-car">{p.year} {p.car}</div>}
                   {p.city&&<div style={{fontSize:10,color:"var(--muted2)",marginTop:2}}>📍 {p.city}</div>}
                   <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
-                    <TierBadge wins={tw(p.wins)}/>
+                    <TierBadge points={p.points||0}/>
                     <span style={{fontSize:10,color:"var(--muted)"}}>#{rank}</span>
                   </div>
                 </div>
@@ -1820,7 +2188,7 @@ function SearchView({ isFriend, sentFR, addFR, openPlayer, groups, isInGroup, se
                 <div className="user-username">@{p.username}</div>
                 {p.city&&<div style={{fontSize:10,color:"var(--muted2)"}}>📍 {p.city}</div>}
               </div>
-              <TierBadge wins={tw(p.wins)}/>
+              <TierBadge points={p.points||0}/>
             </div>
           ))
       )}
@@ -1830,10 +2198,14 @@ function SearchView({ isFriend, sentFR, addFR, openPlayer, groups, isInGroup, se
 
 /* ─── USER PROFILE ───────────────────────────────────────── */
 function UserProfile({ userId, onBack, isFriend, sentFR, addFR, groups, isInGroup, sentGR, joinGroup, reqGroup, allUsers, myProfile }) {
-  const p = getU(userId, allUsers, myProfile);
+  const cached = getU(userId, allUsers, myProfile);
+  const [p, setP] = useState(cached);
   const [userCar, setUserCar] = useState(null);
 
   useEffect(()=>{
+    // Fetch fresh profile to get latest banner, avatar etc.
+    supabase.from("profiles").select("*").eq("id",userId).single()
+      .then(({data})=>{ if(data) setP(profileFromRow(data)); });
     supabase.from("user_cars").select("*").eq("user_id",userId).eq("is_primary",true).maybeSingle()
       .then(({data})=>{ if(data) setUserCar(carFromRow(data)); });
   }, [userId]);
@@ -1851,8 +2223,14 @@ function UserProfile({ userId, onBack, isFriend, sentFR, addFR, groups, isInGrou
     <div className="fade">
       <button className="back-btn" onClick={onBack}>← Back</button>
 
+      {/* Banner */}
+      {p.bannerUrl
+        ? <img src={p.bannerUrl} alt="banner" className="profile-banner" style={{marginBottom:0}}/>
+        : <div style={{height:60,background:"var(--s2)",borderBottom:"1px solid var(--border)"}}/>
+      }
+
       <div style={{padding:"0 16px 14px"}}>
-        <div style={{display:"flex",gap:14,alignItems:"flex-start",marginBottom:12}}>
+        <div style={{display:"flex",gap:14,alignItems:"flex-start",marginBottom:12,marginTop:12}}>
           <Av user={p} size={56} isMe={isMe}/>
           <div style={{flex:1}}>
             <div style={{fontSize:13,color:"var(--accent)",fontWeight:600,marginBottom:2}}>@{p.username}</div>
@@ -1868,8 +2246,8 @@ function UserProfile({ userId, onBack, isFriend, sentFR, addFR, groups, isInGrou
               </a>
             )}
             <div style={{display:"flex",gap:8,alignItems:"center",marginTop:8,flexWrap:"wrap"}}>
-              <TierBadge wins={totalW}/>
-              <span style={{fontSize:11,color:"var(--muted)"}}>#{computeRanks(allUsers,myProfile).find(x=>x.id===userId)?.rank??"-"} · {totalW}W</span>
+              <TierBadge points={p.points||0}/>
+              <span style={{fontSize:11,color:"var(--muted)"}}>#{computeRanks(allUsers,myProfile).find(x=>x.id===userId)?.rank??"-"} · {p.points||0} pts</span>
             </div>
           </div>
         </div>
@@ -1885,10 +2263,7 @@ function UserProfile({ userId, onBack, isFriend, sentFR, addFR, groups, isInGrou
       {/* Car showcase */}
       {(hasCar||userCar===null)&&(
         <>
-          <div className="sec-lbl">
-            {hasCar?`${userCar.year} ${userCar.make} ${userCar.model}`:"Car"}
-            {hasCar&&userCar.buildStage&&<span style={{marginLeft:8}}><BuildBadge stage={userCar.buildStage}/></span>}
-          </div>
+          <div className="sec-lbl">Ride</div>
           <div className="car-showcase">
             <div className="car-photo-wrap" style={{cursor:"default"}}>
               {userCar?.photoUrl
@@ -1901,10 +2276,11 @@ function UserProfile({ userId, onBack, isFriend, sentFR, addFR, groups, isInGrou
             </div>
             {hasCar&&(
               <div className="car-info-block">
-                <div className="car-year-badge">{userCar.year||"—"}</div>
-                <div className="car-make-model">{userCar.make} {userCar.model}</div>
+                <div style={{fontSize:17,fontWeight:700,lineHeight:1.2,marginBottom:6,letterSpacing:-.3}}>
+                  {[userCar.year,userCar.make,userCar.model].filter(Boolean).join(" ")}
+                </div>
+                {userCar.buildStage&&userCar.buildStage!=="stock"&&<div style={{marginBottom:6}}><BuildBadge stage={userCar.buildStage}/></div>}
                 {userCar.trim&&<div className="car-trim">{userCar.trim}</div>}
-                {userCar.buildStage&&userCar.buildStage!=="stock"&&<div style={{marginTop:8}}><BuildBadge stage={userCar.buildStage}/></div>}
                 {userCar.mods&&(
                   <div className="car-mods-section">
                     <div className="car-mods-label">Modifications</div>
@@ -1917,20 +2293,22 @@ function UserProfile({ userId, onBack, isFriend, sentFR, addFR, groups, isInGrou
         </>
       )}
 
-      {/* Race Stats */}
-      <div className="sec-lbl">Race Stats</div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,padding:"0 16px",marginBottom:8}}>
+      {/* Stats */}
+      <div className="sec-lbl">Stats</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,padding:"0 16px",marginBottom:8}}>
         {FORMAT.map(f=>(
-          <div key={f.key} style={{background:"var(--s2)",borderRadius:10,padding:"10px 8px",textAlign:"center",border:"1px solid var(--border)"}}>
-            <div style={{fontSize:20,fontWeight:700,lineHeight:1}}>{p.wins[f.key]??0}</div>
-            <div style={{fontSize:9,color:"var(--muted2)",marginTop:3,letterSpacing:.5,textTransform:"uppercase"}}>{f.short}</div>
+          <div key={f.key} style={{background:"var(--s2)",borderRadius:10,padding:"12px",border:"1px solid var(--border)",opacity:f.comingSoon?0.5:1}}>
+            <div style={{fontSize:11,marginBottom:6,color:"var(--muted2)",fontWeight:600,letterSpacing:.5,textTransform:"uppercase"}}>{f.label}</div>
+            {f.comingSoon
+              ? <div style={{fontSize:11,color:"var(--muted)",fontStyle:"italic"}}>Coming Soon</div>
+              : <div style={{fontSize:22,fontWeight:700,lineHeight:1}}>{p.wins[f.key]??0}</div>
+            }
           </div>
         ))}
       </div>
 
-      {/* Recorded Times */}
       {hasTimes&&(<>
-        <div className="sec-lbl">Recorded Times</div>
+        <div className="sec-lbl">Best Times</div>
         <div className="times-grid">
           {RACE_TIMES.map(t=>(
             <div key={t.key} className="time-box">
@@ -1966,7 +2344,7 @@ function UserProfile({ userId, onBack, isFriend, sentFR, addFR, groups, isInGrou
 }
 
 /* ─── GROUP DETAIL ───────────────────────────────────────── */
-function GroupDetail({ groupId, groups, setGroups, onBack, openPlayer, openChat, myProfile, allUsers, isInGroup, lobbies, onCreateLobbyForGroup }) {
+function GroupDetail({ groupId, groups, setGroups, onBack, openPlayer, openChat, myProfile, allUsers, isInGroup, sentGR, joinGroup, reqGroup, lobbies, onCreateLobbyForGroup }) {
   const g = groups.find(x=>x.id===groupId);
   const [subTab, setSubTab] = useState("Posts");
   const [posts, setPosts] = useState([]);
@@ -2058,8 +2436,16 @@ function GroupDetail({ groupId, groups, setGroups, onBack, openPlayer, openChat,
         {g.tags?.length>0&&<div className="tags" style={{marginBottom:8,paddingLeft:10}}>{g.tags.map(t=><span key={t} className="tag">{t}</span>)}</div>}
         <div style={{display:"flex",gap:8,paddingLeft:10}}>
           {inGroup&&<button className="btn btn-secondary btn-sm" onClick={()=>openChat(groupId)}>💬 Chat</button>}
-          {inGroup&&isAdmin&&<button className="btn btn-primary btn-sm" style={{background:theme,borderColor:theme}} onClick={onCreateLobbyForGroup}>📡 Start Lobby</button>}
-          {!inGroup&&<button className="btn btn-primary btn-sm" style={{background:theme}}>Join Group</button>}
+          {inGroup&&<button className="btn btn-primary btn-sm" style={{background:theme,borderColor:theme}} onClick={onCreateLobbyForGroup}>📡 Start Lobby</button>}
+          {!inGroup&&!sentGR(groupId)&&(
+            <button className="btn btn-primary btn-sm" style={{background:theme}}
+              onClick={()=>g.type==="private"?reqGroup(groupId):joinGroup(groupId)}>
+              {g.type==="private"?"Request to Join":"Join Group"}
+            </button>
+          )}
+          {!inGroup&&sentGR(groupId)&&(
+            <button className="btn btn-secondary btn-sm" disabled>Request Sent</button>
+          )}
         </div>
       </div>
 
@@ -2163,7 +2549,7 @@ function GroupDetail({ groupId, groups, setGroups, onBack, openPlayer, openChat,
                 <div className="list-item-title">@{m.username}{m.id===myProfile.id&&<span style={{fontSize:10,color:theme,marginLeft:6}}>YOU</span>}{m.id===g.admin&&<span style={{fontSize:9,color:"var(--muted2)",marginLeft:4,background:"var(--s3)",padding:"1px 5px",borderRadius:3}}>ADMIN</span>}</div>
                 {memberCars[m.id]&&<div className="list-item-sub" style={{fontFamily:"var(--font-mono)",fontSize:10}}>{memberCars[m.id]}</div>}
               </div>
-              <TierBadge wins={tw(m.wins)}/>
+              <TierBadge points={m.points||0}/>
             </div>
           ))}
         </div>
@@ -2254,7 +2640,7 @@ function ChatView({ groupId, groups, onBack, openPlayer, myProfile, allUsers }) 
               <div className="list-item-title">@{m.username||m.avatar}{m.id===myProfile.id&&<span style={{fontSize:10,color:"var(--accent)",marginLeft:6}}>YOU</span>}</div>
               {memberCars[m.id]&&<div className="list-item-sub" style={{fontFamily:"var(--font-mono)",fontSize:10}}>{memberCars[m.id]}</div>}
             </div>
-            <TierBadge wins={tw(m.wins)}/>
+            <TierBadge points={m.points||0}/>
           </div>
         ))}
       </div>
@@ -2378,7 +2764,12 @@ function MapView({ groups, openPlayer, myProfile, setMyProfile, allUsers, lobbie
         if(mapRef.current) mapRef.current.flyTo({center:[lng,lat],zoom:13});
         setLocating(false);
       },
-      (err)=>{setLocErr("Location access denied");setLocating(false);},
+      (err)=>{
+        const msg = err.code === 1
+          ? "Location blocked — go to your browser settings, allow location for this site, then try again."
+          : "Could not get location. Check your connection and try again.";
+        setLocErr(msg); setLocating(false);
+      },
       {enableHighAccuracy:true,timeout:10000}
     );
   };
@@ -2415,7 +2806,7 @@ function MapView({ groups, openPlayer, myProfile, setMyProfile, allUsers, lobbie
           <div className={`tog ${mapVisible?"on":""}`}/>
           <span>{mapVisible?"Visible on map":"Hidden from map"}</span>
         </div>
-        {locErr&&<span className="map-loc-status" style={{color:"var(--red)"}}>{locErr}</span>}
+        {locErr&&<span className="map-loc-status" style={{color:"var(--red)",lineHeight:1.4,display:"block",marginTop:6}}>{locErr}</span>}
         {!locErr&&myProfile.lat!=null&&<span className="map-loc-status">📍 Location set</span>}
       </div>
 
@@ -2660,15 +3051,18 @@ function SubmitTimeModal({ myProfile, myCar, initialCat, onClose, onSubmitted })
 }
 
 /* ─── PROFILE VIEW ───────────────────────────────────────── */
-function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateGroup, myCar, allUsers }) {
+function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateGroup, myCar, myCars, allUsers, onLogWin }) {
   const [activeSubTab, setActiveSubTab] = useState("Stats");
+  const [logWinModal, setLogWinModal] = useState(false);
+  const [carStatsIdx, setCarStatsIdx] = useState(null); // which car's stats are expanded
   const myGroups = groups.filter(g=>g.memberIds.includes(myProfile.id));
   const myFriends = allUsers.filter(p=>friends.includes(p.id));
   const totalW = tw(myProfile.wins);
   const totalR = Object.values(myProfile.races).reduce((a,b)=>a+b,0);
-  const tier = getTier(totalW);
+  const myPts = myProfile.points||0;
+  const tier = getTier(myPts);
   const nextTier = TIERS[TIERS.indexOf(tier)+1];
-  const progress = nextTier?((totalW-tier.min)/(nextTier.min-tier.min))*100:100;
+  const progress = nextTier?((myPts-tier.min)/(nextTier.min-tier.min))*100:100;
   const hasTimes = myProfile.times&&Object.values(myProfile.times).some(v=>v);
   const myRank = computeRanks(allUsers,myProfile).find(x=>x.id===myProfile.id)?.rank??"-";
   const hasCar = myCar.make&&myCar.model;
@@ -2704,11 +3098,10 @@ function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateG
         </div>
         {hasCar?(
           <div className="car-info-block">
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-              <div className="car-year-badge">{myCar.year||"—"}</div>
-              {myCar.buildStage&&myCar.buildStage!=="stock"&&<BuildBadge stage={myCar.buildStage}/>}
+            <div style={{fontSize:17,fontWeight:700,lineHeight:1.2,marginBottom:6,letterSpacing:-.3}}>
+              {[myCar.year,myCar.make,myCar.model].filter(Boolean).join(" ")}
             </div>
-            <div className="car-make-model">{myCar.make} {myCar.model}</div>
+            {myCar.buildStage&&myCar.buildStage!=="stock"&&<div style={{marginBottom:6}}><BuildBadge stage={myCar.buildStage}/></div>}
             {myCar.trim&&<div className="car-trim">{myCar.trim}</div>}
             {myCar.mods&&<div className="car-mods-section"><div className="car-mods-label">Modifications</div><div className="car-mods-text">{myCar.mods}</div></div>}
           </div>
@@ -2736,14 +3129,14 @@ function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateG
               </a>
             )}
             <div style={{display:"flex",gap:8,alignItems:"center",marginTop:8,flexWrap:"wrap"}}>
-              <TierBadge wins={totalW}/>
+              <TierBadge points={myProfile.points||0}/>
               <span style={{fontSize:11,color:"var(--muted)"}}>Rank #{myRank} Global</span>
             </div>
           </div>
         </div>
         <div style={{marginBottom:4,display:"flex",justifyContent:"space-between"}}>
-          <span style={{fontSize:10,color:tier.color,fontWeight:600,letterSpacing:.5}}>{tier.name.toUpperCase()} · {totalW} WINS</span>
-          {nextTier&&<span style={{fontSize:10,color:"var(--muted)"}}>→ {nextTier.name} at {nextTier.min}W</span>}
+          <span style={{fontSize:10,color:tier.color,fontWeight:600,letterSpacing:.5}}>{tier.name.toUpperCase()} · {myPts} PTS</span>
+          {nextTier&&<span style={{fontSize:10,color:"var(--muted)"}}>→ {nextTier.name} at {nextTier.min}pts</span>}
         </div>
         <div style={{height:3,background:"var(--s3)",borderRadius:2,overflow:"hidden"}}>
           <div style={{height:"100%",width:`${Math.min(progress,100)}%`,background:tier.color,borderRadius:2,transition:"width .5s"}}/>
@@ -2774,21 +3167,29 @@ function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateG
           ))}
         </div>
 
-        <div className="sec-lbl">By Format</div>
+        <div className="sec-lbl" style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingRight:16}}>
+          <span>Wins</span>
+          <button className="btn btn-primary btn-sm" style={{fontSize:11,padding:"3px 10px"}} onClick={()=>setLogWinModal(true)}>+ Log Win</button>
+        </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,padding:"0 16px",marginBottom:8}}>
           {FORMAT.map(f=>(
-            <div key={f.key} style={{background:"var(--s2)",borderRadius:10,padding:"12px",border:"1px solid var(--border)"}}>
+            <div key={f.key} style={{background:"var(--s2)",borderRadius:10,padding:"12px",border:"1px solid var(--border)",opacity:f.comingSoon?0.5:1}}>
               <div style={{fontSize:11,marginBottom:6,color:"var(--muted2)",fontWeight:600,letterSpacing:.5,textTransform:"uppercase"}}>{f.label}</div>
-              <div style={{display:"flex",alignItems:"baseline",gap:4}}>
-                <span style={{fontSize:22,fontWeight:700,lineHeight:1}}>{myProfile.wins[f.key]??0}</span>
-                <span style={{fontSize:11,color:"var(--muted)"}}>/ {myProfile.races[f.key]??0}</span>
-              </div>
+              {f.comingSoon
+                ? <div style={{fontSize:11,color:"var(--muted)",fontStyle:"italic"}}>Coming Soon</div>
+                : f.isLobbies
+                  ? <div style={{fontSize:22,fontWeight:700,lineHeight:1}}>{myProfile.wins[f.key]??0}</div>
+                  : <div style={{display:"flex",alignItems:"baseline",gap:4}}>
+                      <span style={{fontSize:22,fontWeight:700,lineHeight:1}}>{myProfile.wins[f.key]??0}</span>
+                      <span style={{fontSize:11,color:"var(--muted)"}}>/ {myProfile.races[f.key]??0} races</span>
+                    </div>
+              }
             </div>
           ))}
         </div>
 
         {hasTimes&&(<>
-          <div className="sec-lbl">Recorded Times</div>
+          <div className="sec-lbl">Best Times (Overall)</div>
           <div className="times-grid">
             {RACE_TIMES.map(t=>(
               <div key={t.key} className="time-box">
@@ -2798,6 +3199,58 @@ function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateG
               </div>
             ))}
           </div>
+        </>)}
+
+        {/* Per-car stats */}
+        {myCars&&myCars.filter(c=>c.make&&c.model).length>0&&(<>
+          <div className="sec-lbl">Stats by Car</div>
+          {myCars.filter(c=>c.make&&c.model).map((car,i)=>{
+            const label = [car.year,car.make,car.model].filter(Boolean).join(" ");
+            const carW = tw(car.wins||{});
+            const carR = Object.values(car.races||{}).reduce((a,b)=>a+b,0);
+            const hasCTimes = car.times&&Object.values(car.times).some(v=>v);
+            const open = carStatsIdx===i;
+            return (
+              <div key={car.id||i} style={{margin:"0 16px 6px",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
+                <button onClick={()=>setCarStatsIdx(open?null:i)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:"var(--s2)",border:"none",cursor:"pointer",color:"var(--text)"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{fontSize:13,fontWeight:700}}>{label}</div>
+                    {car.buildStage&&car.buildStage!=="stock"&&<BuildBadge stage={car.buildStage}/>}
+                    {car.isPrimary&&<span style={{fontSize:9,color:"var(--accent)",fontWeight:700,letterSpacing:.5}}>PRIMARY</span>}
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{fontSize:11,color:"var(--muted)"}}>{carW}W · {carR}R</span>
+                    <span style={{fontSize:10,color:"var(--muted2)",transform:open?"rotate(180deg)":"none",transition:"transform .2s"}}>▼</span>
+                  </div>
+                </button>
+                {open&&(
+                  <div style={{padding:"12px 14px",background:"var(--bg)",borderTop:"1px solid var(--border)"}}>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:hasCTimes?10:0}}>
+                      {FORMAT.filter(f=>!f.comingSoon&&!f.isLobbies).map(f=>(
+                        <div key={f.key} style={{background:"var(--s2)",borderRadius:8,padding:"10px 12px",border:"1px solid var(--border)"}}>
+                          <div style={{fontSize:10,color:"var(--muted2)",fontWeight:600,letterSpacing:.5,textTransform:"uppercase",marginBottom:4}}>{f.label}</div>
+                          <span style={{fontSize:18,fontWeight:700}}>{(car.wins||{})[f.key]??0}</span>
+                          <span style={{fontSize:10,color:"var(--muted)",marginLeft:4}}>/ {(car.races||{})[f.key]??0} races</span>
+                        </div>
+                      ))}
+                    </div>
+                    {hasCTimes&&(
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                        {RACE_TIMES.map(t=>(
+                          <div key={t.key} style={{background:"var(--s2)",borderRadius:8,padding:"10px 12px",border:"1px solid var(--border)"}}>
+                            <div style={{fontSize:10,color:"var(--muted2)",fontWeight:600,letterSpacing:.5,textTransform:"uppercase",marginBottom:4}}>{t.label}</div>
+                            <div style={{fontSize:16,fontWeight:700,lineHeight:1}}>{car.times[t.key]||"—"}</div>
+                            {car.times[t.key]&&<div style={{fontSize:9,color:"var(--muted2)",marginTop:2}}>{t.unit}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {!hasCTimes&&<div style={{fontSize:11,color:"var(--muted)",textAlign:"center",paddingTop:4}}>No times recorded for this car yet.</div>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </>)}
       </>)}
 
@@ -2817,7 +3270,7 @@ function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateG
                 <div className="user-car">{tw(p.wins)}W</div>
               </div>
               <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
-                <TierBadge wins={tw(p.wins)}/>
+                <TierBadge points={p.points||0}/>
                 {isActive&&<span style={{fontSize:9,color:"var(--green)",fontWeight:600,letterSpacing:.3}}>ACTIVE</span>}
               </div>
             </div>
@@ -2845,6 +3298,64 @@ function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateG
         ))}
       </>)}
       <div style={{height:20}}/>
+      {logWinModal&&(
+        <LogWinModal onClose={()=>setLogWinModal(false)} onSave={onLogWin} myCars={myCars}/>
+      )}
+    </div>
+  );
+}
+
+/* ─── LOG WIN MODAL ──────────────────────────────────────── */
+function LogWinModal({ onClose, onSave, myCars }) {
+  const raceable = FORMAT.filter(f=>!f.comingSoon&&!f.isLobbies);
+  const [format, setFormat] = useState(raceable[0]?.key||"h2h");
+  const [result, setResult] = useState("win");
+  const [carId, setCarId] = useState(myCars?.find(c=>c.isPrimary)?.id||myCars?.[0]?.id||null);
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    setSaving(true);
+    await onSave(format, result, carId);
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="modal-sheet fade">
+        <div className="modal-handle"/>
+        <div className="modal-title">Log a Race</div>
+        <div className="modal-sub">Record a result to your stats</div>
+        {myCars&&myCars.filter(c=>c.make&&c.model).length>1&&(
+          <div style={{marginBottom:14}}>
+            <label className="inp-label">Car</label>
+            <select className="inp" style={{appearance:"none",cursor:"pointer"}} value={carId||""} onChange={e=>setCarId(e.target.value)}>
+              {myCars.filter(c=>c.make&&c.model).map(c=>(
+                <option key={c.id} value={c.id}>{[c.year,c.make,c.model].filter(Boolean).join(" ")}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        <div style={{marginBottom:14}}>
+          <label className="inp-label">Race Type</label>
+          <div className="seg">
+            {raceable.map(f=>(
+              <button key={f.key} className={`seg-opt ${format===f.key?"on":""}`} onClick={()=>setFormat(f.key)}>{f.label}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{marginBottom:20}}>
+          <label className="inp-label">Result</label>
+          <div className="seg">
+            <button className={`seg-opt ${result==="win"?"on":""}`} onClick={()=>setResult("win")}>Win</button>
+            <button className={`seg-opt ${result==="loss"?"on":""}`} onClick={()=>setResult("loss")}>Loss</button>
+          </div>
+        </div>
+        <button className="btn btn-primary btn-full" style={{borderRadius:12,padding:14,marginBottom:8}} disabled={saving} onClick={submit}>
+          {saving?"Saving…":"Save Result"}
+        </button>
+        <button className="btn btn-secondary btn-full" style={{borderRadius:12,padding:12}} onClick={onClose}>Cancel</button>
+      </div>
     </div>
   );
 }
@@ -2888,8 +3399,8 @@ function EditProfile({ myProfile, setMyProfile, myCars, setMyCars, setMyCar, use
     avatar: myProfile.avatar||"", times: myProfile.times||{},
   });
   const initCars = myCars.length > 0
-    ? myCars.map(c=>({...c, _photoFile:null, _photoPreview:c.photoUrl||"", _mods:(c.mods||"").split(",").map(s=>s.trim()).filter(Boolean), _deleted:false}))
-    : [{...BLANK_CAR, isPrimary:true, _photoFile:null, _photoPreview:"", _mods:[], _deleted:false}];
+    ? myCars.map(c=>({...c, _photoFile:null, _photoPreview:c.photoUrl||"", _mods:(c.mods||"").split(",").map(s=>s.trim()).filter(Boolean), _deleted:false, _times:{...( c.times||{})}}))
+    : [{...BLANK_CAR, isPrimary:true, _photoFile:null, _photoPreview:"", _mods:[], _deleted:false, _times:{}}];
   const [cars, setCars] = useState(initCars);
   const [bannerFile, setBannerFile] = useState(null);
   const [bannerPreview, setBannerPreview] = useState(myProfile.bannerUrl||"");
@@ -2992,6 +3503,7 @@ function EditProfile({ myProfile, setMyProfile, myCars, setMyCars, setMyCar, use
           mods:car._mods.join(", ")||null, build_stage:car.buildStage||"stock",
           photos:photoUrl?[photoUrl]:(car.photoUrl?[car.photoUrl]:[]),
           is_primary:car.isPrimary||false,
+          times: car._times||{},
         };
         if(car.id){
           const{data:carUpdated,error:e}=await supabase.from("user_cars").update(payload).eq("id",car.id).select();
@@ -3139,6 +3651,22 @@ function EditProfile({ myProfile, setMyProfile, myCars, setMyCars, setMyCar, use
                 </div>
               )}
             </div>
+
+            {/* Per-car best times */}
+            <div style={{marginTop:10}}>
+              <label className="inp-label">Best Times for this Car</label>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                {RACE_TIMES.map(t=>(
+                  <div key={t.key} style={{background:"var(--s3)",borderRadius:8,padding:"10px 12px",border:"1px solid var(--border)"}}>
+                    <label className="inp-label" style={{padding:0,marginBottom:6}}>{t.label} ({t.unit})</label>
+                    <input className="inp" style={{padding:"8px 10px",fontSize:13}}
+                      value={car._times?.[t.key]||""}
+                      onChange={e=>setCars(cs=>cs.map((c,idx)=>idx===realIdx?{...c,_times:{...(c._times||{}),[t.key]:e.target.value}}:c))}
+                      placeholder="e.g. 3.8"/>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         );
       })}
@@ -3185,7 +3713,7 @@ function EditProfile({ myProfile, setMyProfile, myCars, setMyCars, setMyCar, use
       </div>
 
       {/* Race Times */}
-      <div className="sec-lbl">Recorded Times</div>
+      <div className="sec-lbl">Best Times</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,padding:"0 16px",marginBottom:8}}>
         {RACE_TIMES.map(t=>(
           <div key={t.key} style={{background:"var(--s2)",borderRadius:10,padding:"12px",border:"1px solid var(--border)"}}>
