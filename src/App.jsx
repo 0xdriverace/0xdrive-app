@@ -1167,12 +1167,22 @@ export default function App() {
     if(error) console.error("reqGroup error:",error);
   };
   const isInLobby = lid => lobbies.find(l=>l.id===lid)?.memberIds.includes(myId);
+  const myActiveLobbyId = lobbies.find(l=>l.memberIds.includes(myId))?.id || null;
   const sentLR = lid => lobbyReqs.includes(lid);
+
+  const leaveLobby = async (lid) => {
+    setLobbies(ls=>ls.map(l=>l.id===lid?{...l,memberIds:l.memberIds.filter(id=>id!==myId)}:l));
+    setLobbyReqs(r=>r.filter(id=>id!==lid));
+    await supabase.from("lobby_members").delete().eq("lobby_id",lid).eq("user_id",myId);
+  };
+
   const joinLobby = async (lid) => {
+    // Leave any existing lobby first
+    if (myActiveLobbyId && myActiveLobbyId !== lid) await leaveLobby(myActiveLobbyId);
     setLobbies(ls=>ls.map(l=>l.id===lid?{...l,memberIds:[...l.memberIds,myId]}:l));
     const{error}=await supabase.from("lobby_members").upsert({lobby_id:lid,user_id:myId,status:"active"},{onConflict:"lobby_id,user_id"});
     if(error) console.error("joinLobby error:",error);
-    awardPoints(myId, 3); // joining a lobby = 3pts
+    awardPoints(myId, 3);
   };
   const reqLobby = async (lid) => {
     if (sentLR(lid)) return;
@@ -1259,7 +1269,8 @@ export default function App() {
                 onBack={()=>setLobbyDetailId(null)} openPlayer={setPlayerView}
                 myProfile={myProfile} allUsers={allUsers} myCar={myCar} myCars={myCars}
                 groups={groups} isInLobby={isInLobby} sentLR={sentLR} joinLobby={joinLobby}
-                reqLobby={reqLobby} approveLobby={approveLobby} denyLobby={denyLobby} kickLobby={kickLobby}/>
+                reqLobby={reqLobby} approveLobby={approveLobby} denyLobby={denyLobby} kickLobby={kickLobby}
+                leaveLobby={leaveLobby} myActiveLobbyId={myActiveLobbyId}/>
             ) : groupDetailId ? (
               <GroupDetail groupId={groupDetailId} groups={groups} setGroups={setGroups}
                 onBack={()=>setGroupDetailId(null)} openPlayer={setPlayerView}
@@ -1273,7 +1284,8 @@ export default function App() {
             ) : tab==="Lobbies" ? (
               <LobbiesView lobbies={lobbies} setLobbies={setLobbies} myProfile={myProfile}
                 allUsers={allUsers} groups={groups} isInLobby={isInLobby} sentLR={sentLR}
-                joinLobby={joinLobby} reqLobby={reqLobby}
+                joinLobby={joinLobby} reqLobby={reqLobby} leaveLobby={leaveLobby}
+                myActiveLobbyId={myActiveLobbyId}
                 openLobby={setLobbyDetailId} onCreateLobby={()=>setCreateLobbyOpen(true)}
                 pendingCount={pendingCount} approveLobby={approveLobby} denyLobby={denyLobby}/>
             ) : tab==="Groups" ? (
@@ -1357,7 +1369,7 @@ function Header({ myProfile, onLogout }) {
 }
 
 /* ─── LOBBIES VIEW ───────────────────────────────────────── */
-function LobbiesView({ lobbies, setLobbies, myProfile, allUsers, groups, isInLobby, sentLR, joinLobby, reqLobby, openLobby, onCreateLobby, pendingCount, approveLobby, denyLobby }) {
+function LobbiesView({ lobbies, setLobbies, myProfile, allUsers, groups, isInLobby, sentLR, joinLobby, reqLobby, leaveLobby, myActiveLobbyId, openLobby, onCreateLobby, pendingCount, approveLobby, denyLobby }) {
   const [typeFilter, setTypeFilter] = useState("All");
   const [showPending, setShowPending] = useState(false);
   const [memberCars, setMemberCars] = useState({});
@@ -1517,10 +1529,13 @@ function LobbiesView({ lobbies, setLobbies, myProfile, allUsers, groups, isInLob
 
             <div className="gc-actions">
               {inLobby && <button className="btn btn-green btn-sm" style={{cursor:"default"}}>✓ In Lobby</button>}
+              {inLobby && l.createdBy!==myProfile.id && (
+                <button className="btn btn-secondary btn-sm" onClick={e=>{e.stopPropagation();leaveLobby(l.id);}}>Leave</button>
+              )}
               {!inLobby && groupLocked && <span style={{fontSize:11,color:"var(--muted2)"}}>🔒 Members only</span>}
               {!inLobby && !pending && !groupLocked && (
                 <button className="btn btn-primary btn-sm" onClick={e=>{e.stopPropagation(); l.isOpen?joinLobby(l.id):reqLobby(l.id);}}>
-                  {l.isOpen?"Join Lobby":"Request to Join"}
+                  {myActiveLobbyId&&myActiveLobbyId!==l.id?"Switch Lobby":l.isOpen?"Join Lobby":"Request to Join"}
                 </button>
               )}
               {!inLobby && pending && <button className="btn btn-secondary btn-sm" disabled>Pending…</button>}
@@ -1534,7 +1549,7 @@ function LobbiesView({ lobbies, setLobbies, myProfile, allUsers, groups, isInLob
 }
 
 /* ─── LOBBY DETAIL ───────────────────────────────────────── */
-function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfile, allUsers, myCar, myCars, groups, isInLobby, sentLR, joinLobby, reqLobby, approveLobby, denyLobby, kickLobby }) {
+function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfile, allUsers, myCar, myCars, groups, isInLobby, sentLR, joinLobby, reqLobby, approveLobby, denyLobby, kickLobby, leaveLobby, myActiveLobbyId }) {
   const l = lobbies.find(x=>x.id===lobbyId);
   const [memberCars, setMemberCars] = useState({});
   const [memberSpeeds, setMemberSpeeds] = useState({});
@@ -1549,6 +1564,7 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
   const [micOn, setMicOn] = useState(false);
   const [micError, setMicError] = useState("");
   const [gpsError, setGpsError] = useState("");
+  const [permPrompt, setPermPrompt] = useState(false); // show permissions explainer on first join
   // Race mode
   const [raceState, setRaceState] = useState("idle"); // idle | countdown | racing | finished
   const [raceCountdown, setRaceCountdown] = useState(3);
@@ -2082,18 +2098,49 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
         {l.destination && <div style={{fontSize:12,color:"var(--muted)",marginTop:4}}>→ Destination: {l.destination}</div>}
       </div>
 
+      {/* Permissions prompt overlay */}
+      {permPrompt && (
+        <div style={{margin:"0 16px 12px",background:"var(--s2)",border:"1px solid var(--accent)",borderRadius:12,padding:"16px"}}>
+          <div style={{fontSize:14,fontWeight:700,marginBottom:8}}>📍 Allow Location & Microphone</div>
+          <div style={{fontSize:12,color:"var(--muted)",lineHeight:1.6,marginBottom:12}}>
+            0xrace needs two permissions to work inside a lobby:<br/>
+            <strong style={{color:"var(--text)"}}>📍 Location</strong> — broadcasts your live position and speed on the map.<br/>
+            <strong style={{color:"var(--text)"}}>🎙 Microphone</strong> — lets you talk with your crew via voice chat.<br/><br/>
+            Your browser will ask. If you accidentally blocked either one, tap the <strong style={{color:"var(--text)"}}>lock icon 🔒</strong> in your address bar → Site settings → Allow both.
+          </div>
+          <button className="btn btn-primary btn-full" style={{borderRadius:10}} onClick={()=>setPermPrompt(false)}>Got it</button>
+        </div>
+      )}
+
       {/* Join controls */}
       {!inLobby && (
-        <div style={{padding:"0 16px 14px"}}>
+        <div style={{padding:"0 16px 14px",display:"flex",flexDirection:"column",gap:8}}>
           {groupLocked ? (
             <div style={{textAlign:"center",fontSize:12,color:"var(--muted)",padding:"10px 0"}}>🔒 This lobby is for {lobbyGroup.name} members only</div>
+          ) : myActiveLobbyId && myActiveLobbyId !== lobbyId ? (
+            <div>
+              <div style={{fontSize:12,color:"var(--muted)",marginBottom:8,textAlign:"center"}}>You're already in another lobby. Leave it to join this one.</div>
+              <button className="btn btn-primary btn-full" style={{borderRadius:10}} onClick={()=>{ joinLobby(lobbyId); setPermPrompt(true); }}>
+                Leave current lobby &amp; Join
+              </button>
+            </div>
           ) : !sentLR(lobbyId) ? (
-            <button className="btn btn-primary btn-full" style={{borderRadius:10}} onClick={()=>l.isOpen?joinLobby(lobbyId):reqLobby(lobbyId)}>
+            <button className="btn btn-primary btn-full" style={{borderRadius:10}} onClick={()=>{ l.isOpen?joinLobby(lobbyId):reqLobby(lobbyId); if(l.isOpen) setPermPrompt(true); }}>
               {l.isOpen?"Join Lobby":"Request to Join"}
             </button>
           ) : (
             <button className="btn btn-secondary btn-full" disabled style={{borderRadius:10}}>Request Sent — Awaiting Approval</button>
           )}
+        </div>
+      )}
+
+      {/* Leave lobby button (members only, not host) */}
+      {inLobby && !isMyLobby && (
+        <div style={{padding:"0 16px 8px"}}>
+          <button className="btn btn-secondary btn-full" style={{borderRadius:10,fontSize:13}}
+            onClick={async()=>{ await leaveLobby(lobbyId); onBack(); }}>
+            Leave Lobby
+          </button>
         </div>
       )}
 
