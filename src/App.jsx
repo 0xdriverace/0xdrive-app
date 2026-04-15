@@ -923,6 +923,7 @@ export default function App() {
   const [createLobbyOpen, setCreateLobbyOpen] = useState(false);
   const [myCar, setMyCar] = useState({...BLANK_CAR});
   const [myCars, setMyCars] = useState([]);
+  const [approvalToast, setApprovalToast] = useState(null); // {lobbyId, lobbyName}
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -937,6 +938,29 @@ export default function App() {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // Global realtime: watch lobby_members for THIS user — detect when a request is approved
+  useEffect(() => {
+    const myId = session?.user?.id;
+    if (!myId) return;
+    const ch = supabase.channel(`my-lobby-status-${myId}`)
+      .on("postgres_changes", {event:"UPDATE", schema:"public", table:"lobby_members", filter:`user_id=eq.${myId}`}, (payload) => {
+        const row = payload.new;
+        if (row.status === "active") {
+          // We were approved — update local state
+          setLobbyReqs(r => r.filter(id => id !== row.lobby_id));
+          setLobbies(ls => ls.map(l => l.id === row.lobby_id
+            ? { ...l, memberIds: [...new Set([...l.memberIds, myId])], pendingRequests: l.pendingRequests.filter(id => id !== myId) }
+            : l
+          ));
+          // Show toast and auto-open the lobby
+          const lobbyName = lobbies.find(l => l.id === row.lobby_id)?.name || "lobby";
+          setApprovalToast({ lobbyId: row.lobby_id, lobbyName });
+          setTimeout(() => setApprovalToast(null), 5000);
+        }
+      }).subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [session?.user?.id]);
 
   const loadData = async (userId) => {
     // Reset user-specific state before loading new user's data
@@ -1074,6 +1098,11 @@ export default function App() {
 
   const handleCreateLobby = async (form) => {
     const myId = session?.user?.id;
+    // Block pending members from creating lobbies for private groups
+    if (form.groupId) {
+      const grp = groups.find(g => g.id === form.groupId);
+      if (grp && grp.type === "private" && !grp.memberIds.includes(myId)) return;
+    }
     const lobbyData = {
       id: `local-${Date.now()}`, name: form.name.trim(),
       type: form.type, isOpen: form.isOpen, groupId: form.groupId||null,
@@ -1284,6 +1313,21 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {/* Lobby approval toast */}
+      {approvalToast && (
+        <div style={{position:"fixed",bottom:90,left:"50%",transform:"translateX(-50%)",zIndex:9999,background:"var(--green)",color:"#fff",borderRadius:12,padding:"12px 18px",fontSize:13,fontWeight:600,boxShadow:"0 4px 20px rgba(0,0,0,.4)",display:"flex",alignItems:"center",gap:10,maxWidth:320,width:"calc(100% - 40px)"}}>
+          <span style={{fontSize:18}}>✅</span>
+          <div style={{flex:1}}>
+            <div>You're in — {approvalToast.lobbyName}</div>
+            <div style={{fontSize:11,fontWeight:400,opacity:.85,marginTop:2}}>Tap to open the lobby</div>
+          </div>
+          <button style={{background:"rgba(255,255,255,.2)",border:"none",borderRadius:8,color:"#fff",padding:"4px 10px",fontSize:12,cursor:"pointer"}}
+            onClick={()=>{setLobbyDetailId(approvalToast.lobbyId);setTab("Lobbies");setApprovalToast(null);}}>
+            Open
+          </button>
+        </div>
+      )}
     </>
   );
 }
