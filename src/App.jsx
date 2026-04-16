@@ -703,23 +703,57 @@ function CreateLobbyModal({ myProfile, groups, onClose, onCreate }) {
   const [saving, setSaving] = useState(false);
   const [destSuggestions, setDestSuggestions] = useState([]);
   const destDebounce = useRef(null);
+  const [livePos, setLivePos] = useState(null);
+
+  // Get fresh GPS on mount for proximity-biased search
+  useEffect(()=>{
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      pos=>setLivePos({lat:pos.coords.latitude,lng:pos.coords.longitude}),
+      ()=>{},
+      {timeout:5000,maximumAge:30000}
+    );
+  },[]);
+
+  const getProximity = () => {
+    const lat = livePos?.lat || myProfile.lat;
+    const lng = livePos?.lng || myProfile.lng;
+    return lat&&lng ? `&proximity=${lng},${lat}` : "";
+  };
+
+  // Show nearby POIs when search field is focused and empty
+  const handleDestFocus = async () => {
+    if (form.destination || destSuggestions.length) return;
+    const lat = livePos?.lat || myProfile.lat;
+    const lng = livePos?.lng || myProfile.lng;
+    if (!lat||!lng) return;
+    try {
+      // Reverse geocode to get nearby places/POIs
+      const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?types=poi,neighborhood,place&access_token=${MAPBOX_TOKEN}&limit=5`);
+      const data = await res.json();
+      setDestSuggestions((data.features||[]).map(f=>({
+        name: f.place_name, short: f.text,
+        lat: f.center?.[1]??null, lng: f.center?.[0]??null,
+        nearby: true,
+      })));
+    } catch(_){}
+  };
 
   const handleDestInput = (val) => {
     setForm(f=>({...f, destination:val, destLat:null, destLng:null}));
     setDestSuggestions([]);
     if (destDebounce.current) clearTimeout(destDebounce.current);
-    if (!val.trim()||val.length<2) return;
+    if (!val.trim()||val.length<1) return;
     destDebounce.current = setTimeout(async()=>{
       try {
-        const proximity = myProfile.lat&&myProfile.lng ? `&proximity=${myProfile.lng},${myProfile.lat}` : "";
-        const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(val)}.json?access_token=${MAPBOX_TOKEN}&autocomplete=true&limit=5${proximity}`);
+        const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(val)}.json?access_token=${MAPBOX_TOKEN}&autocomplete=true&limit=5${getProximity()}`);
         const data = await res.json();
         setDestSuggestions((data.features||[]).map(f=>({
           name: f.place_name, short: f.text,
           lat: f.center?.[1]??null, lng: f.center?.[0]??null,
         })));
       } catch(_){}
-    }, 350);
+    }, 300);
   };
 
   const handleGroupChange = (gid) => {
@@ -778,14 +812,24 @@ function CreateLobbyModal({ myProfile, groups, onClose, onCreate }) {
 
         <div style={{marginBottom:16,position:"relative"}}>
           <label className="inp-label">Planned Destination <span style={{fontWeight:400,color:"var(--muted2)",textTransform:"none",letterSpacing:0,fontSize:10}}>(optional)</span></label>
-          <input className="inp" value={form.destination} onChange={e=>handleDestInput(e.target.value)} onBlur={()=>setTimeout(()=>setDestSuggestions([]),200)} placeholder="Search a place…" autoComplete="off"/>
+          <input className="inp" value={form.destination}
+            onChange={e=>handleDestInput(e.target.value)}
+            onFocus={handleDestFocus}
+            onBlur={()=>setTimeout(()=>setDestSuggestions([]),200)}
+            placeholder="Search a place…" autoComplete="off"/>
           {destSuggestions.length>0&&(
             <div style={{position:"absolute",left:0,right:0,background:"var(--s2)",border:"1px solid var(--border)",borderRadius:10,marginTop:4,zIndex:999,overflow:"hidden"}}>
+              {destSuggestions[0]?.nearby&&(
+                <div style={{padding:"6px 14px 2px",fontSize:10,color:"var(--muted2)",fontWeight:700,letterSpacing:.5}}>NEARBY</div>
+              )}
               {destSuggestions.map((s,i)=>(
-                <div key={i} onClick={()=>{setForm(f=>({...f,destination:s.name,destLat:s.lat,destLng:s.lng}));setDestSuggestions([]);}}
-                  style={{padding:"10px 14px",cursor:"pointer",borderBottom:i<destSuggestions.length-1?"1px solid var(--border)":undefined}}>
-                  <div style={{fontSize:13,fontWeight:600,color:"var(--text)"}}>{s.short}</div>
-                  <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>{s.name}</div>
+                <div key={i} onClick={()=>{setForm(f=>({...f,destination:s.short||s.name,destLat:s.lat,destLng:s.lng}));setDestSuggestions([]);}}
+                  style={{padding:"10px 14px",cursor:"pointer",borderBottom:i<destSuggestions.length-1?"1px solid var(--border)":undefined,display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{fontSize:15,flexShrink:0}}>{s.nearby?"📍":"🔍"}</div>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:600,color:"var(--text)"}}>{s.short}</div>
+                    <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>{s.name}</div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1658,8 +1702,10 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
   const rollFromRef = useRef(30);
   const rollToRef = useRef(130);
   useEffect(()=>{ rollFromRef.current = rollFrom; rollToRef.current = rollTo; }, [rollFrom, rollTo]);
-  // Keep ref in sync so GPS callback never reads stale state
+  // Keep refs in sync so GPS callback never reads stale state
   useEffect(()=>{ raceFormatRef.current = raceFormat; }, [raceFormat]);
+  useEffect(()=>{ directionsRef.current = directions; }, [directions]);
+  useEffect(()=>{ currentStepRef.current = currentStep; }, [currentStep]);
   const [raceResults, setRaceResults] = useState({}); // {userId: {ms, position}}
   const [myRaceMs, setMyRaceMs] = useState(null);
   const raceStartTimeRef = useRef(null);
@@ -1668,6 +1714,8 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
   const raceFinishedRef = useRef(false);
   const raceSessionIdRef = useRef(null);
   const raceFormatRef = useRef("quarter_mile"); // ref so GPS callback always sees current value
+  const directionsRef = useRef(null);   // ref so GPS callback always sees current directions
+  const currentStepRef = useRef(0);     // ref so GPS callback always sees current step
   const agoraClientRef = useRef(null);
   const agoraTrackRef = useRef(null);
   const chatEndRef = useRef(null);
@@ -1706,11 +1754,13 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
     return ()=>{ if(mapRef.current){mapRef.current.remove();mapRef.current=null;} };
   }, [inLobby, lobbyId]);
 
-  // Fetch + draw directions when map is ready and lobby has a destination
+  // Fetch + draw directions when lobby has a destination and we have live GPS
+  const myLiveLat = memberLocations[myProfile.id]?.lat;
+  const myLiveLng = memberLocations[myProfile.id]?.lng;
   useEffect(()=>{
     if (!inLobby||!l?.destLat||!l?.destLng) return;
-    const myLat = myProfile.lat;
-    const myLng = myProfile.lng;
+    const myLat = myLiveLat || myProfile.lat;
+    const myLng = myLiveLng || myProfile.lng;
     if (!myLat||!myLng) return;
     fetch(`https://api.mapbox.com/directions/v5/mapbox/driving/${myLng},${myLat};${l.destLng},${l.destLat}?steps=true&geometries=geojson&access_token=${MAPBOX_TOKEN}`)
       .then(r=>r.json())
@@ -1720,6 +1770,7 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
         const steps = route.legs?.[0]?.steps?.map(s=>({
           instruction: s.maneuver?.instruction||"",
           distanceMi: (s.distance*0.000621371).toFixed(2),
+          location: s.maneuver?.location, // [lng, lat] — used for GPS auto-advance
         }))||[];
         setDirections({
           steps,
@@ -1728,6 +1779,7 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
           geometry: route.geometry,
         });
         setCurrentStep(0);
+        currentStepRef.current = 0;
         // Draw route on map once it's loaded
         const drawRoute = () => {
           if (!mapRef.current) return;
@@ -1753,22 +1805,11 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
         if (mapRef.current?.isStyleLoaded()) drawRoute();
         else mapRef.current?.on("load", drawRoute);
       }).catch(()=>{});
-  // Re-fetch when my location updates (coarse — only when coords change significantly)
+  // Re-fetch once live GPS is first available, and when destination changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inLobby, lobbyId, l?.destLat, l?.destLng, !!myProfile.lat]);
+  }, [inLobby, lobbyId, l?.destLat, l?.destLng, !!myLiveLat, !!myProfile.lat]);
 
-  // Update current turn-by-turn step based on my location
-  useEffect(()=>{
-    if (!directions?.steps?.length||!myProfile.lat||!myProfile.lng) return;
-    // Find the closest upcoming step
-    let closest = currentStep;
-    for (let i=currentStep; i<directions.steps.length-1; i++) {
-      // crude: advance step when we've been "on" this one a while — rely on user tapping next or auto on GPS proximity
-      closest = i; break;
-    }
-    setCurrentStep(closest);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myProfile.lat, myProfile.lng]);
+  // Step auto-advance is handled in the watchPosition GPS callback via directionsRef/currentStepRef
 
   // Update member markers on map when locations change
   useEffect(()=>{
@@ -1945,6 +1986,23 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
                 car_id: myCar?.id||null, elapsed_ms: elapsedMs,
                 finished_at: new Date().toISOString(),
               },{onConflict:"race_id,user_id"}).catch(()=>{});
+            }
+          }
+        }
+
+        // ── Navigation step auto-advance ──────────────────────────
+        const dir = directionsRef.current;
+        if (dir?.steps?.length && !raceStartTimeRef.current) {
+          const step = currentStepRef.current;
+          if (step < dir.steps.length - 1) {
+            const nextLoc = dir.steps[step + 1]?.location; // [lng, lat]
+            if (nextLoc) {
+              const distToNext = haversine(lat, lng, nextLoc[1], nextLoc[0]) * 1609.34; // meters
+              if (distToNext < 60) {
+                const next = step + 1;
+                currentStepRef.current = next;
+                setCurrentStep(next);
+              }
             }
           }
         }
@@ -2220,6 +2278,44 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
         {l.destination && <div style={{fontSize:12,color:"var(--muted)",marginTop:4}}>→ Destination: {l.destination}</div>}
       </div>
 
+      {/* Sticky navigation banner — shown when lobby has a destination and directions loaded */}
+      {directions && raceState==="idle" && (
+        <div style={{
+          position:"sticky",top:0,zIndex:50,
+          background:"#1a1a1a",borderBottom:"2px solid var(--accent)",
+          padding:"10px 16px",
+          display:"flex",alignItems:"center",gap:12,
+        }}>
+          <div style={{
+            width:38,height:38,borderRadius:10,
+            background:"var(--accent)",
+            display:"flex",alignItems:"center",justifyContent:"center",
+            fontSize:18,flexShrink:0,
+          }}>
+            {currentStep >= directions.steps.length - 1 ? "🏁" : "⬆️"}
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:700,color:"var(--text)",lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+              {currentStep >= directions.steps.length - 1
+                ? `Arrive at ${l.destination}`
+                : directions.steps[currentStep]?.instruction || "Head to destination"}
+            </div>
+            <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>
+              {currentStep < directions.steps.length - 1 && directions.steps[currentStep]?.distanceMi
+                ? `in ${directions.steps[currentStep].distanceMi} mi · `
+                : ""}
+              {directions.distanceMi} mi total · {directions.durationMin} min
+            </div>
+          </div>
+          {currentStep < directions.steps.length - 1 && (
+            <div style={{fontSize:12,color:"var(--muted2)",flexShrink:0,textAlign:"right"}}>
+              <div style={{fontWeight:700,color:"var(--text)"}}>{currentStep + 1}/{directions.steps.length - 1}</div>
+              <div>turns</div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Permissions prompt overlay */}
       {permPrompt && (
         <div style={{margin:"0 16px 12px",background:"var(--s2)",border:"1px solid var(--accent)",borderRadius:12,padding:"16px"}}>
@@ -2327,33 +2423,26 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
             ))}
           </div>
 
-          {/* Directions panel */}
+          {/* Directions step list — sticky banner above handles the active step */}
           {directions && (
             <>
-              <div className="sec-lbl" style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingRight:16}}>
-                <span>Directions → {l.destination}</span>
-                <span style={{fontSize:11,color:"var(--muted)",fontWeight:400}}>{directions.distanceMi} mi · {directions.durationMin} min</span>
-              </div>
+              <div className="sec-lbl">Turn-by-Turn</div>
               <div style={{margin:"0 16px 8px",background:"var(--s2)",borderRadius:10,border:"1px solid var(--border)",overflow:"hidden"}}>
-                {/* Current step */}
-                <div style={{padding:"12px 14px",borderBottom:"1px solid var(--border)",background:"rgba(230,26,26,.06)"}}>
-                  <div style={{fontSize:11,color:"var(--accent)",fontWeight:700,marginBottom:4,letterSpacing:.5}}>NEXT TURN</div>
-                  <div style={{fontSize:14,fontWeight:600,color:"var(--text)",lineHeight:1.3}}>{directions.steps[currentStep]?.instruction||"Head to destination"}</div>
-                  {directions.steps[currentStep]?.distanceMi&&<div style={{fontSize:11,color:"var(--muted)",marginTop:4}}>in {directions.steps[currentStep].distanceMi} mi</div>}
-                </div>
-                {/* Step list (collapsed — show 3 upcoming) */}
-                {directions.steps.slice(currentStep+1,currentStep+4).map((s,i)=>(
-                  <div key={i} style={{padding:"9px 14px",borderBottom:i<2?"1px solid var(--border)":undefined,display:"flex",alignItems:"center",gap:10}}>
-                    <div style={{width:6,height:6,borderRadius:"50%",background:"var(--border2)",flexShrink:0}}/>
+                {directions.steps.slice(0, -1).map((s,i)=>(
+                  <div key={i} onClick={()=>{setCurrentStep(i);currentStepRef.current=i;}}
+                    style={{padding:"9px 14px",borderBottom:i<directions.steps.length-2?"1px solid var(--border)":undefined,display:"flex",alignItems:"center",gap:10,cursor:"pointer",background:i===currentStep?"rgba(230,26,26,.08)":undefined}}>
+                    <div style={{width:8,height:8,borderRadius:"50%",background:i<currentStep?"var(--muted2)":i===currentStep?"var(--accent)":"var(--border2)",flexShrink:0,transition:"background .2s"}}/>
                     <div style={{flex:1}}>
-                      <div style={{fontSize:12,color:"var(--text2)"}}>{s.instruction}</div>
+                      <div style={{fontSize:12,color:i===currentStep?"var(--text)":"var(--text2)",fontWeight:i===currentStep?600:400}}>{s.instruction}</div>
                       <div style={{fontSize:10,color:"var(--muted2)",marginTop:2}}>{s.distanceMi} mi</div>
                     </div>
+                    {i===currentStep&&<div style={{fontSize:10,color:"var(--accent)",fontWeight:700}}>NOW</div>}
                   </div>
                 ))}
-                <div style={{display:"flex",gap:6,padding:"8px 12px"}}>
-                  <button className="btn btn-secondary btn-sm" onClick={()=>setCurrentStep(s=>Math.max(0,s-1))} disabled={currentStep===0}>◀ Prev</button>
-                  <button className="btn btn-primary btn-sm" onClick={()=>setCurrentStep(s=>Math.min(directions.steps.length-1,s+1))} disabled={currentStep>=directions.steps.length-1}>Next ▶</button>
+                {/* Destination row */}
+                <div style={{padding:"9px 14px",display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{width:8,height:8,borderRadius:"50%",background:"var(--accent)",flexShrink:0}}/>
+                  <div style={{fontSize:12,fontWeight:600,color:"var(--text)"}}>Arrive at {l.destination}</div>
                 </div>
               </div>
             </>
