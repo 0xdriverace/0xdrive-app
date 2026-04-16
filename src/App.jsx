@@ -1829,9 +1829,11 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
         setRaceCountdown(c);
         if (c <= 0) {
           clearInterval(iv);
-          raceStartTimeRef.current = (p.format||"quarter_mile")==="roll" ? 0 : Date.now();
-          raceStartPosRef.current = lastPosRef.current;
-          setRaceState("racing");
+          setTimeout(()=>{
+            raceStartTimeRef.current = (p.format||"quarter_mile")==="roll" ? 0 : Date.now();
+            raceStartPosRef.current = lastPosRef.current;
+            setRaceState("racing");
+          }, 700);
         }
       }, 1000);
     })
@@ -2055,10 +2057,12 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
       setRaceCountdown(c);
       if (c <= 0) {
         clearInterval(iv);
-        // Roll race: timer starts when speed hits rollFrom (set ref to 0 as sentinel)
-        raceStartTimeRef.current = raceFormatRef.current==="roll" ? 0 : Date.now();
-        raceStartPosRef.current = lastPosRef.current;
-        setRaceState("racing");
+        setTimeout(()=>{
+          // Roll race: timer starts when speed hits rollFrom (set ref to 0 as sentinel)
+          raceStartTimeRef.current = raceFormatRef.current==="roll" ? 0 : Date.now();
+          raceStartPosRef.current = lastPosRef.current;
+          setRaceState("racing");
+        }, 700);
       }
     }, 1000);
   };
@@ -2437,11 +2441,33 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
           )}
 
           {(raceState==="countdown"||raceState==="racing") && (
-            <div style={{margin:"0 16px 10px",background:"var(--s2)",borderRadius:12,border:`2px solid ${raceState==="racing"?"var(--green)":"var(--accent)"}`,padding:"24px 16px",textAlign:"center"}}>
+            <div style={{margin:"0 16px 10px",background:"var(--s2)",borderRadius:12,border:`2px solid ${raceState==="racing"?"var(--green)":raceCountdown===3?"#ff3333":raceCountdown===0?"#00cc44":"#ffcc00"}`,padding:"24px 16px",textAlign:"center",transition:"border-color .2s"}}>
               {raceState==="countdown" ? (
                 <>
-                  <div style={{fontSize:72,fontWeight:900,fontFamily:"var(--font-display)",color:"var(--accent)",lineHeight:1}}>{raceCountdown||"GO!"}</div>
-                  <div style={{fontSize:13,color:"var(--muted)",marginTop:8}}>Get ready…</div>
+                  <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,marginBottom:14}}>
+                    <div style={{
+                      width:52,height:52,borderRadius:"50%",
+                      background:raceCountdown===3?"#ff3333":"#1a0000",
+                      boxShadow:raceCountdown===3?"0 0 18px #ff3333, 0 0 36px #ff333388":"none",
+                      transition:"background .15s,box-shadow .15s"
+                    }}/>
+                    <div style={{
+                      width:52,height:52,borderRadius:"50%",
+                      background:(raceCountdown===2||raceCountdown===1)?"#ffcc00":"#1a1100",
+                      boxShadow:(raceCountdown===2||raceCountdown===1)?"0 0 18px #ffcc00, 0 0 36px #ffcc0088":"none",
+                      transition:"background .15s,box-shadow .15s"
+                    }}/>
+                    <div style={{
+                      width:52,height:52,borderRadius:"50%",
+                      background:raceCountdown===0?"#00cc44":"#001a0a",
+                      boxShadow:raceCountdown===0?"0 0 18px #00cc44, 0 0 36px #00cc4488":"none",
+                      transition:"background .15s,box-shadow .15s"
+                    }}/>
+                  </div>
+                  <div style={{fontSize:64,fontWeight:900,fontFamily:"var(--font-display)",lineHeight:1,color:raceCountdown===3?"#ff3333":raceCountdown===0?"#00cc44":"#ffcc00",transition:"color .15s"}}>
+                    {raceCountdown===0?"GO!":raceCountdown}
+                  </div>
+                  <div style={{fontSize:13,color:"var(--muted)",marginTop:8}}>{raceCountdown===0?"FLOOR IT!":"Get ready…"}</div>
                 </>
               ) : (
                 <>
