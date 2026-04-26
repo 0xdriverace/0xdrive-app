@@ -7276,6 +7276,345 @@ function SessionStatsView({ userId, myCar }) {
 }
 
 /* ─── PROFILE VIEW ───────────────────────────────────────── */
+/* ─── REFERRAL / CREATOR DASHBOARD ──────────────────────── */
+function ReferralDashboard({ myProfile, allUsers }) {
+  const [referralCode, setReferralCode] = useState(myProfile.referralCode||"");
+  const [editing, setEditing] = useState(false);
+  const [codeInput, setCodeInput] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [referrals, setReferrals] = useState([]);
+  const [payouts, setPayouts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [applyCode, setApplyCode] = useState("");
+  const [applyStatus, setApplyStatus] = useState("");
+
+  const CREATOR_TIERS = [
+    {key:"starter",   label:"Starter",    min:0,  rate:10, color:"#555",    icon:"🏁", perks:"Basic referral link"},
+    {key:"bronze",    label:"Bronze",     min:5,  rate:15, color:"#CD7F32", icon:"⬡",  perks:"Custom code + 15% commission"},
+    {key:"silver",    label:"Silver",     min:15, rate:20, color:"#C0C0C0", icon:"⬡",  perks:"Creator badge + priority support"},
+    {key:"gold",      label:"Gold",       min:50, rate:25, color:"#f59e0b", icon:"⬡",  perks:"Featured creator + analytics dashboard"},
+    {key:"ambassador",label:"Ambassador", min:100,rate:30, color:"#a855f7", icon:"◆",  perks:"Max commission + merch + direct line to team"},
+  ];
+
+  const totalRefs = myProfile.totalReferrals||referrals.length||0;
+  const currentTier = CREATOR_TIERS.slice().reverse().find(t=>totalRefs>=t.min)||CREATOR_TIERS[0];
+  const nextTier = CREATOR_TIERS[CREATOR_TIERS.indexOf(currentTier)+1];
+  const tierProgress = nextTier ? ((totalRefs-currentTier.min)/(nextTier.min-currentTier.min))*100 : 100;
+  const earnings = myProfile.referralEarnings||0;
+  const hostEvents = myProfile.hostEventsCount||0;
+  const isVerifiedHost = hostEvents >= 3;
+
+  useEffect(()=>{
+    const load = async()=>{
+      setLoading(true);
+      // Load referral code from profile
+      const{data:prof}=await supabase.from("profiles").select("referral_code,total_referrals,referral_earnings,is_creator,commission_rate,creator_tier,host_events_count,host_badge").eq("id",myProfile.id).single();
+      if(prof){
+        setReferralCode(prof.referral_code||"");
+      }
+      // Load referral signups
+      const{data:refs}=await supabase.from("referral_signups").select("*").eq("referrer_id",myProfile.id).order("created_at",{ascending:false});
+      if(refs) setReferrals(refs);
+      // Load payouts
+      const{data:pays}=await supabase.from("creator_payouts").select("*").eq("user_id",myProfile.id).order("created_at",{ascending:false});
+      if(pays) setPayouts(pays);
+      setLoading(false);
+    };
+    load();
+  },[myProfile.id]);
+
+  const generateCode = async() => {
+    const code = codeInput.trim().toUpperCase().replace(/[^A-Z0-9]/g,"") || myProfile.username?.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,12) || `REF${Date.now().toString(36).toUpperCase().slice(-6)}`;
+    setSaving(true);
+    const{error}=await supabase.from("profiles").update({referral_code:code,is_creator:true}).eq("id",myProfile.id);
+    if(error){
+      if(error.message?.includes("duplicate")||error.message?.includes("unique")) {
+        setApplyStatus("That code is already taken. Try another.");
+      }
+      setSaving(false); return;
+    }
+    setReferralCode(code);
+    setEditing(false); setCodeInput(""); setSaving(false);
+  };
+
+  const copyLink = () => {
+    const link = `https://0xrace.com?ref=${referralCode}`;
+    navigator.clipboard?.writeText(link);
+    setCopied(true);
+    setTimeout(()=>setCopied(false), 2000);
+  };
+
+  const copyCode = () => {
+    navigator.clipboard?.writeText(referralCode);
+    setCopied(true);
+    setTimeout(()=>setCopied(false), 2000);
+  };
+
+  const shareLink = () => {
+    const link = `https://0xrace.com?ref=${referralCode}`;
+    const text = `Join me on 0xrace — the racing community app. Use my code ${referralCode} when you sign up!`;
+    if(navigator.share) {
+      navigator.share({title:"Join 0xrace",text,url:link}).catch(()=>{});
+    } else {
+      copyLink();
+    }
+  };
+
+  const applyReferralCode = async() => {
+    if(!applyCode.trim()) return;
+    setApplyStatus("");
+    // Find who owns this code
+    const{data:referrer}=await supabase.from("profiles").select("id,username").eq("referral_code",applyCode.trim().toUpperCase()).single();
+    if(!referrer){setApplyStatus("Code not found."); return;}
+    if(referrer.id===myProfile.id){setApplyStatus("You can't use your own code."); return;}
+    // Check if already referred
+    const{data:existing}=await supabase.from("referral_signups").select("id").eq("referred_id",myProfile.id).single();
+    if(existing){setApplyStatus("You've already used a referral code."); return;}
+    // Insert referral
+    await supabase.from("referral_signups").insert({referrer_id:referrer.id,referred_id:myProfile.id,referral_code:applyCode.trim().toUpperCase()});
+    await supabase.from("profiles").update({referred_by:referrer.id}).eq("id",myProfile.id);
+    // Increment referrer's count
+    await supabase.rpc("increment_referrals",{uid:referrer.id}).catch(()=>{
+      // Fallback if RPC doesn't exist
+      supabase.from("profiles").update({total_referrals:(referrer.total_referrals||0)+1}).eq("id",referrer.id).catch(()=>{});
+    });
+    setApplyStatus(`Applied! You were referred by @${referrer.username}`);
+    setApplyCode("");
+  };
+
+  return (
+    <div>
+      {/* Hero card */}
+      <div style={{margin:"0 16px 12px",background:"linear-gradient(145deg,rgba(245,158,11,.08),rgba(230,26,26,.06))",border:"1px solid rgba(245,158,11,.3)",borderRadius:14,padding:"18px 16px",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:-20,right:-20,fontSize:80,opacity:0.06}}>💰</div>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+          <div style={{width:40,height:40,borderRadius:10,background:"rgba(245,158,11,.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>🤝</div>
+          <div>
+            <div style={{fontSize:16,fontWeight:800,color:"var(--text)",letterSpacing:-.3}}>Creator Program</div>
+            <div style={{fontSize:11,color:"var(--muted)"}}>Earn money by growing the 0xrace community</div>
+          </div>
+        </div>
+
+        {/* Stats row */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
+          <div style={{background:"var(--s2)",borderRadius:10,padding:"10px 8px",textAlign:"center",border:"1px solid var(--border)"}}>
+            <div style={{fontSize:22,fontWeight:800,color:"#f59e0b"}}>{totalRefs}</div>
+            <div style={{fontSize:9,color:"var(--muted2)",letterSpacing:.6,textTransform:"uppercase"}}>Referrals</div>
+          </div>
+          <div style={{background:"var(--s2)",borderRadius:10,padding:"10px 8px",textAlign:"center",border:"1px solid var(--border)"}}>
+            <div style={{fontSize:22,fontWeight:800,color:"var(--green)"}}>${earnings.toFixed(2)}</div>
+            <div style={{fontSize:9,color:"var(--muted2)",letterSpacing:.6,textTransform:"uppercase"}}>Earned</div>
+          </div>
+          <div style={{background:"var(--s2)",borderRadius:10,padding:"10px 8px",textAlign:"center",border:"1px solid var(--border)"}}>
+            <div style={{fontSize:22,fontWeight:800,color:currentTier.color}}>{currentTier.rate}%</div>
+            <div style={{fontSize:9,color:"var(--muted2)",letterSpacing:.6,textTransform:"uppercase"}}>Commission</div>
+          </div>
+        </div>
+
+        {/* Creator tier */}
+        <div style={{marginBottom:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <span style={{fontSize:14}}>{currentTier.icon}</span>
+              <span style={{fontSize:12,fontWeight:700,color:currentTier.color}}>{currentTier.label} Creator</span>
+            </div>
+            {nextTier&&<span style={{fontSize:10,color:"var(--muted)"}}>→ {nextTier.label} at {nextTier.min} referrals</span>}
+          </div>
+          <div style={{height:4,background:"var(--s3)",borderRadius:2,overflow:"hidden"}}>
+            <div style={{height:"100%",width:`${Math.min(tierProgress,100)}%`,background:`linear-gradient(90deg,${currentTier.color},${nextTier?.color||currentTier.color})`,borderRadius:2,transition:"width .5s"}}/>
+          </div>
+          <div style={{fontSize:10,color:"var(--muted2)",marginTop:4}}>{currentTier.perks}</div>
+        </div>
+      </div>
+
+      {/* Your referral code */}
+      <div className="sec-lbl">Your Creator Code</div>
+      {referralCode ? (
+        <div style={{margin:"0 16px 10px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+            <div style={{flex:1,background:"var(--s2)",border:"2px dashed rgba(245,158,11,.4)",borderRadius:10,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <span style={{fontSize:20,fontWeight:900,letterSpacing:2,color:"#f59e0b",fontFamily:"var(--font-mono)"}}>{referralCode}</span>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            <button className="btn btn-primary btn-sm" onClick={copyCode} style={{background:"#f59e0b",borderColor:"#f59e0b",flex:1}}>
+              {copied?"Copied!":"Copy Code"}
+            </button>
+            <button className="btn btn-primary btn-sm" onClick={copyLink} style={{flex:1}}>
+              Copy Link
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={shareLink} style={{flex:1}}>
+              Share
+            </button>
+          </div>
+          <div style={{fontSize:11,color:"var(--muted)",marginTop:6,textAlign:"center"}}>
+            Share <span style={{color:"var(--accent)",fontWeight:600}}>0xrace.com?ref={referralCode}</span> to earn commission
+          </div>
+        </div>
+      ) : (
+        <div style={{margin:"0 16px 10px"}}>
+          {!editing ? (
+            <button className="btn btn-primary btn-full" style={{borderRadius:10,padding:14,background:"linear-gradient(135deg,#f59e0b,#e61a1a)"}} onClick={()=>{setEditing(true);setCodeInput(myProfile.username?.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,12)||"");}}>
+              Create Your Creator Code
+            </button>
+          ) : (
+            <div style={{background:"var(--s2)",borderRadius:12,border:"1px solid var(--border)",padding:"14px 16px"}}>
+              <div style={{fontSize:12,fontWeight:600,marginBottom:8}}>Choose your code</div>
+              <input className="inp" value={codeInput} onChange={e=>setCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,16))}
+                placeholder="e.g. DRIFTKING" style={{textAlign:"center",fontSize:16,fontWeight:700,letterSpacing:2,fontFamily:"var(--font-mono)"}}/>
+              <div style={{fontSize:10,color:"var(--muted)",marginTop:4,marginBottom:8,textAlign:"center"}}>Letters and numbers only, up to 16 characters</div>
+              {applyStatus&&<div style={{fontSize:11,color:"var(--red)",marginBottom:6,textAlign:"center"}}>{applyStatus}</div>}
+              <div style={{display:"flex",gap:6}}>
+                <button className="btn btn-primary btn-sm" style={{flex:1,background:"#f59e0b",borderColor:"#f59e0b"}} onClick={generateCode} disabled={saving}>
+                  {saving?"Saving…":"Activate Code"}
+                </button>
+                <button className="btn btn-secondary btn-sm" style={{flex:1}} onClick={()=>{setEditing(false);setApplyStatus("");}}>Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tier breakdown */}
+      <div className="sec-lbl">Creator Tiers</div>
+      <div style={{margin:"0 16px 10px",display:"flex",flexDirection:"column",gap:4}}>
+        {CREATOR_TIERS.map(t=>{
+          const isActive = currentTier.key===t.key;
+          return (
+            <div key={t.key} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:isActive?"rgba(245,158,11,.06)":"var(--s2)",borderRadius:10,border:`1px solid ${isActive?"rgba(245,158,11,.3)":"var(--border)"}`,opacity:totalRefs>=t.min?1:0.5}}>
+              <span style={{fontSize:16,width:24,textAlign:"center"}}>{t.icon}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:12,fontWeight:700,color:t.color}}>{t.label}</div>
+                <div style={{fontSize:10,color:"var(--muted)"}}>{t.min}+ referrals · {t.perks}</div>
+              </div>
+              <span style={{fontSize:13,fontWeight:800,color:t.color,fontFamily:"var(--font-mono)"}}>{t.rate}%</span>
+              {isActive&&<span style={{fontSize:9,color:"#f59e0b",fontWeight:700,background:"rgba(245,158,11,.15)",padding:"2px 6px",borderRadius:4}}>YOU</span>}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Host rewards */}
+      <div className="sec-lbl">Host Rewards</div>
+      <div style={{margin:"0 16px 10px",background:"var(--s2)",borderRadius:12,border:"1px solid var(--border)",padding:"14px 16px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+          <div style={{width:36,height:36,borderRadius:8,background:isVerifiedHost?"rgba(0,192,96,.1)":"var(--s3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,border:`1px solid ${isVerifiedHost?"rgba(0,192,96,.3)":"var(--border)"}`}}>
+            {isVerifiedHost?"✓":"📡"}
+          </div>
+          <div>
+            <div style={{fontSize:13,fontWeight:700,color:isVerifiedHost?"var(--green)":"var(--text)"}}>
+              {isVerifiedHost?"Verified Host":"Host Status"}
+            </div>
+            <div style={{fontSize:11,color:"var(--muted)"}}>{hostEvents} events hosted{isVerifiedHost?"":" · 3 required for Verified badge"}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {[
+            {need:1,  reward:"2x points multiplier for hosting events", done:hostEvents>=1},
+            {need:3,  reward:"Verified Host badge on profile",         done:hostEvents>=3},
+            {need:5,  reward:"Host Leaderboard eligibility",           done:hostEvents>=5},
+            {need:10, reward:"Ambassador program invitation",          done:hostEvents>=10},
+            {need:25, reward:"Revenue share on ticketed events",       done:hostEvents>=25},
+          ].map(m=>(
+            <div key={m.need} style={{display:"flex",alignItems:"center",gap:8,opacity:m.done?1:0.5}}>
+              <div style={{width:18,height:18,borderRadius:"50%",border:`2px solid ${m.done?"var(--green)":"var(--border)"}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                {m.done&&<div style={{width:8,height:8,borderRadius:"50%",background:"var(--green)"}}/>}
+              </div>
+              <div style={{flex:1,fontSize:11,color:m.done?"var(--text)":"var(--muted)"}}>{m.reward}</div>
+              <span style={{fontSize:10,color:"var(--muted2)",fontFamily:"var(--font-mono)"}}>{m.need} events</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Use a code (for users who were referred) */}
+      {!myProfile.referredBy&&(
+        <>
+          <div className="sec-lbl">Have a Referral Code?</div>
+          <div style={{margin:"0 16px 10px",display:"flex",gap:6}}>
+            <input className="inp" value={applyCode} onChange={e=>setApplyCode(e.target.value.toUpperCase())}
+              placeholder="Enter code…" style={{flex:1,textAlign:"center",fontFamily:"var(--font-mono)",letterSpacing:1,fontWeight:600}}/>
+            <button className="btn btn-primary btn-sm" onClick={applyReferralCode} disabled={!applyCode.trim()}>Apply</button>
+          </div>
+          {applyStatus&&<div style={{fontSize:11,color:applyStatus.includes("Applied")?"var(--green)":"var(--red)",textAlign:"center",padding:"0 16px 8px"}}>{applyStatus}</div>}
+        </>
+      )}
+
+      {/* Recent referrals */}
+      {referrals.length>0&&(
+        <>
+          <div className="sec-lbl">Recent Referrals</div>
+          <div className="list-card" style={{margin:"0 16px 10px"}}>
+            {referrals.slice(0,20).map(r=>{
+              const u = allUsers.find(x=>x.id===r.referred_id)||{username:"User"};
+              return (
+                <div key={r.id} className="list-item">
+                  <Av user={u} size={28}/>
+                  <div className="list-item-info">
+                    <div className="list-item-title">@{u.username||"User"}</div>
+                    <div className="list-item-sub">{new Date(r.created_at).toLocaleDateString([],{month:"short",day:"numeric"})}</div>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:12,fontWeight:700,color:r.status==="premium"?"var(--green)":"var(--text)"}}>{r.status==="premium"?`+$${r.earned.toFixed(2)}`:r.status}</div>
+                    <div style={{fontSize:9,color:"var(--muted2)",textTransform:"uppercase"}}>{r.status}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Payout history */}
+      {payouts.length>0&&(
+        <>
+          <div className="sec-lbl">Payout History</div>
+          <div className="list-card" style={{margin:"0 16px 10px"}}>
+            {payouts.map(p=>(
+              <div key={p.id} className="list-item">
+                <div style={{width:28,height:28,borderRadius:6,background:p.status==="paid"?"rgba(0,192,96,.1)":"var(--s3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,border:`1px solid ${p.status==="paid"?"rgba(0,192,96,.3)":"var(--border)"}`}}>
+                  {p.status==="paid"?"✓":"⏳"}
+                </div>
+                <div className="list-item-info">
+                  <div className="list-item-title">${p.amount.toFixed(2)}</div>
+                  <div className="list-item-sub">{new Date(p.created_at).toLocaleDateString([],{month:"short",day:"numeric",year:"numeric"})}</div>
+                </div>
+                <span style={{fontSize:10,fontWeight:600,padding:"3px 8px",borderRadius:6,
+                  background:p.status==="paid"?"rgba(0,192,96,.1)":p.status==="processing"?"rgba(245,158,11,.1)":"var(--s3)",
+                  color:p.status==="paid"?"var(--green)":p.status==="processing"?"#f59e0b":"var(--muted)",
+                  border:`1px solid ${p.status==="paid"?"rgba(0,192,96,.2)":p.status==="processing"?"rgba(245,158,11,.2)":"var(--border)"}`}}>
+                  {p.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* How it works */}
+      <div className="sec-lbl">How It Works</div>
+      <div style={{margin:"0 16px 14px",display:"flex",flexDirection:"column",gap:6}}>
+        {[
+          {step:"1", title:"Get Your Code", desc:"Create a unique creator code above"},
+          {step:"2", title:"Share It", desc:"Send your link or code to friends, followers, and communities"},
+          {step:"3", title:"Earn Commission", desc:"Get paid when your referrals subscribe to premium"},
+          {step:"4", title:"Level Up", desc:"More referrals = higher tier = bigger commission rate"},
+        ].map(s=>(
+          <div key={s.step} style={{display:"flex",gap:10,alignItems:"flex-start",padding:"10px 12px",background:"var(--s2)",borderRadius:10,border:"1px solid var(--border)"}}>
+            <div style={{width:24,height:24,borderRadius:"50%",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:"#fff",flexShrink:0}}>{s.step}</div>
+            <div>
+              <div style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>{s.title}</div>
+              <div style={{fontSize:11,color:"var(--muted)"}}>{s.desc}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{height:20}}/>
+    </div>
+  );
+}
+
 function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateGroup, myCar, myCars, allUsers, onLogWin, openDM }) {
   const [activeSubTab, setActiveSubTab] = useState("Stats");
   const [logWinModal, setLogWinModal] = useState(false);
@@ -7370,11 +7709,11 @@ function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateG
 
       {/* Sub-tabs */}
       <div className="pills" style={{marginBottom:8}}>
-        {["Stats","Drive","Night","Messages","Friends","Groups"].map(t=>(
+        {["Stats","Drive","Night","Referrals","Messages","Friends","Groups"].map(t=>(
           <button key={t} className={`pill ${activeSubTab===t?"on":""}`}
-            style={t==="Night"&&activeSubTab===t?{background:"linear-gradient(135deg,rgba(139,92,246,.3),rgba(59,130,246,.2))",color:"#a78bfa",borderColor:"rgba(139,92,246,.5)"}:undefined}
+            style={t==="Night"&&activeSubTab===t?{background:"linear-gradient(135deg,rgba(139,92,246,.3),rgba(59,130,246,.2))",color:"#a78bfa",borderColor:"rgba(139,92,246,.5)"}:t==="Referrals"&&activeSubTab===t?{background:"linear-gradient(135deg,rgba(245,158,11,.2),rgba(230,26,26,.15))",color:"#f59e0b",borderColor:"rgba(245,158,11,.5)"}:undefined}
             onClick={()=>setActiveSubTab(t)}>
-            {t==="Night"?"🌙 Night":t==="Messages"?"💬 DMs":t}
+            {t==="Night"?"🌙 Night":t==="Messages"?"💬 DMs":t==="Referrals"?"💰 Earn":t}
             {t==="Friends"&&activeFriends.length>0&&<span style={{marginLeft:4,background:"var(--green)",width:6,height:6,borderRadius:"50%",display:"inline-block"}}/>}
           </button>
         ))}
@@ -7508,6 +7847,10 @@ function ProfileView({ myProfile, friends, groups, openPlayer, onEdit, onCreateG
           </div>
         </div>
       </>)}
+
+      {activeSubTab==="Referrals"&&(
+        <ReferralDashboard myProfile={myProfile} allUsers={allUsers}/>
+      )}
 
       {activeSubTab==="Messages"&&(
         <DMInboxView myProfile={myProfile} allUsers={allUsers} openDM={openDM}/>
