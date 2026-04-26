@@ -2251,7 +2251,7 @@ export default function App() {
             {createLobbyOpen && <CreateLobbyModal myProfile={myProfile} groups={groups} onClose={()=>setCreateLobbyOpen(false)} onCreate={handleCreateLobby}/>}
           </div>
 
-          {showNav && (
+          {showNav ? (
             <nav className="nav">
               {TABS.map(({name})=>(
                 <button key={name} className={`ni ${tab===name?"on":""}`} onClick={()=>goTab(name)}>
@@ -2262,6 +2262,13 @@ export default function App() {
                 </button>
               ))}
             </nav>
+          ) : (
+            <button onClick={()=>goTab(tab)} className="floating-home-btn"
+              style={{position:"fixed",bottom:20,right:20,zIndex:9998,width:48,height:48,borderRadius:"50%",background:"var(--accent)",border:"none",boxShadow:"0 4px 16px rgba(230,26,26,.4)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+              </svg>
+            </button>
           )}
         </div>
       </div>
@@ -3234,11 +3241,32 @@ function LobbyDetail({ lobbyId, lobbies, setLobbies, onBack, openPlayer, myProfi
 
   const createRoom = async () => {
     if (!newRoomName.trim()) return;
-    const {data,error} = await supabase.from("lobby_rooms").insert({lobby_id:lobbyId,name:newRoomName.trim(),created_by:myProfile.id}).select().single();
-    if (error||!data) return;
-    // Add creator + selected members
-    const memberInserts = [myProfile.id, ...newRoomMembers].map(uid=>({room_id:data.id,user_id:uid}));
-    await supabase.from("lobby_room_members").insert(memberInserts);
+    // Insert room — use .select() to get the new row back
+    const {data,error} = await supabase.from("lobby_rooms").insert({lobby_id:lobbyId,name:newRoomName.trim(),created_by:myProfile.id}).select("id").single();
+    if (error||!data?.id) {
+      console.error("createRoom insert error:", error);
+      // Fallback: fetch the room we just created
+      const {data:fallback} = await supabase.from("lobby_rooms").select("id").eq("lobby_id",lobbyId).eq("created_by",myProfile.id).eq("name",newRoomName.trim()).order("created_at",{ascending:false}).limit(1).single();
+      if (!fallback?.id) { console.error("createRoom: could not find room after insert"); return; }
+      const roomId = fallback.id;
+      const allMembers = [...new Set([myProfile.id, ...newRoomMembers])];
+      for (const uid of allMembers) {
+        await supabase.from("lobby_room_members").insert({room_id:roomId,user_id:uid}).catch(()=>{});
+      }
+      const {data:refreshed} = await supabase.from("lobby_rooms").select("*,lobby_room_members(user_id)").eq("lobby_id",lobbyId);
+      if (refreshed) setRooms(refreshed.map(r=>({...r,memberIds:r.lobby_room_members?.map(m=>m.user_id)||[]})));
+      setShowCreateRoom(false); setNewRoomName(""); setNewRoomMembers([]);
+      return;
+    }
+    // Add creator + selected members one by one to avoid batch RLS issues
+    const allMembers = [...new Set([myProfile.id, ...newRoomMembers])];
+    for (const uid of allMembers) {
+      const {error:memErr} = await supabase.from("lobby_room_members").insert({room_id:data.id,user_id:uid});
+      if (memErr) console.error("createRoom member error:", uid, memErr);
+    }
+    // Refresh rooms list
+    const {data:refreshed} = await supabase.from("lobby_rooms").select("*,lobby_room_members(user_id)").eq("lobby_id",lobbyId);
+    if (refreshed) setRooms(refreshed.map(r=>({...r,memberIds:r.lobby_room_members?.map(m=>m.user_id)||[]})));
     setShowCreateRoom(false); setNewRoomName(""); setNewRoomMembers([]);
   };
 
